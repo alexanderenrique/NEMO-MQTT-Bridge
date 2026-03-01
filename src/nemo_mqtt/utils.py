@@ -3,15 +3,18 @@ Utility functions for MQTT plugin.
 """
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from django.conf import settings
 from django.utils import timezone
 from django.http import HttpResponse
 
+if TYPE_CHECKING:
+    from .models import MQTTConfiguration
+
 logger = logging.getLogger(__name__)
 
 
-def get_mqtt_config(force_refresh: bool = False) -> Optional['MQTTConfiguration']:
+def get_mqtt_config(force_refresh: bool = False) -> Optional[MQTTConfiguration]:
     """
     Get MQTT configuration from database with caching.
 

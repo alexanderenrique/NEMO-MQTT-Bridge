@@ -6,7 +6,7 @@ This plugin enables real-time publishing of tool usage data to MQTT brokers.
 """
 
 __version__ = "1.0.0"
-__author__ = "SNF-Root"
+__author__ = "Alex Denton"
 __email__ = "alexdenton998@gmail.com"
 
 default_app_config = "nemo_mqtt.apps.MqttPluginConfig"

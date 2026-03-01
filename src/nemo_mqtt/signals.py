@@ -17,7 +17,7 @@ def _check_nemo_availability():
     try:
         from NEMO.models import Tool, Area, User, Reservation, UsageEvent, AreaAccessRecord
         return True, Tool, Area, User, Reservation, UsageEvent, AreaAccessRecord
-    except ImportError:
+    except (ImportError, RuntimeError):
         return False, None, None, None, None, None, None
 
 NEMO_AVAILABLE, Tool, Area, User, Reservation, UsageEvent, AreaAccessRecord = _check_nemo_availability()

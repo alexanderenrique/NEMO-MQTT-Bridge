@@ -15,13 +15,14 @@ DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 # Application definition
+# Run without NEMO-CE: plugin loads, NEMO-only signal tests are skipped via @pytest.mark.skipif(not NEMO_AVAILABLE).
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'tests.test_apps.MqttTestConfig',  # Use test-specific app config
+    'nemo_mqtt',
 ]
 
 MIDDLEWARE = [
@@ -34,12 +35,12 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'nemo_mqtt.urls'
+ROOT_URLCONF = 'tests.urls'
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

@@ -58,6 +58,7 @@ def release_lock():
             print("Redis monitor lock released")
         except:
             pass
+        lock_file = None
 
 def check_redis_messages():
     """Check for messages in Redis"""

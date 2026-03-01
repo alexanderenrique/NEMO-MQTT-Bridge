@@ -5,13 +5,14 @@ Configures NEMO settings and URLs. Use --install-package to also install the
 plugin via pip (when developing or installing from source).
 """
 
-from django.core.management.base import BaseCommand, CommandError
-from django.conf import settings
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
@@ -73,7 +74,7 @@ class Command(BaseCommand):
 
     def _install_package(self):
         """Install the plugin via pip in editable mode"""
-        plugin_dir = Path(__file__).resolve().parent.parent.parent.parent
+        plugin_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
         self.stdout.write('Installing Python package...')
         try:
             subprocess.run(

@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         python-version: [3.8, 3.9, "3.10", "3.11", "3.12"]
-        django-version: ["3.2", "4.0", "4.1", "4.2"]
+        django-version: ["3.2", "4.0", "4.1", "4.2", "5.0"]
 
     steps:
     - uses: actions/checkout@v4
@@ -54,7 +54,11 @@ jobs:
         mypy src/nemo_mqtt/ --ignore-missing-imports
     
     - name: Test with pytest
+      env:
+        PYTHONPATH: .
+        DJANGO_SETTINGS_MODULE: tests.test_settings
       run: |
+        # Run tests without NEMO-CE; NEMO-only tests are skipped via @pytest.mark.skipif(not NEMO_AVAILABLE)
         pytest tests/ --cov=nemo_mqtt --cov-report=xml --cov-report=html
     
     - name: Upload coverage to Codecov

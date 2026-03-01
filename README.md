@@ -4,6 +4,10 @@
 [![Python Support](https://img.shields.io/pypi/pyversions/nemo-mqtt-plugin.svg)](https://pypi.org/project/nemo-mqtt-plugin/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+Tool enables and disables are at the core of many labs that use NEMO. The status of a tool in critical for lab users to know. In many labs, the tool status is represented by either only the status on NEMO, or by a small red/green LED. The goal of this project was to have NEMO send an MQTT message to a display positioned on each tool, that can more throughly convey tool status, tool user, start time, previous user, etc.
+
+The hardware, firmware, and broker code associated with this project can be found at: https://github.com/alexanderenrique/NEMO-Tool-Display
+
 Django plugin that publishes NEMO tool usage events to MQTT (tool enable/disable, tool saves). Uses Redis as a buffer and a separate bridge process to keep broker connections out of Django.
 
 ## Architecture
@@ -30,6 +34,7 @@ Configuration is stored in Django (e.g. `/customization/mqtt/`) and loaded by th
 ```bash
 pip install nemo-mqtt-plugin
 cd /path/to/your/nemo-ce
+# Add 'nemo_mqtt' to INSTALLED_APPS first, then run setup to add URLs and logging
 python manage.py setup_nemo_integration
 python manage.py migrate nemo_mqtt
 ```
@@ -52,4 +57,4 @@ python manage.py migrate nemo_mqtt
 
 - **Monitoring:** Event stream at `/mqtt/monitor/`; CLI tools in `nemo_mqtt.monitoring` (see `src/nemo_mqtt/monitoring/README.md`).
 - **HMAC:** Optional payload signing
-- **License:** MIT. [Issues](https://github.com/SNF-Root/NEMO-MQTT-Plugin/issues) · [Discussions](https://github.com/SNF-Root/NEMO-MQTT-Plugin/discussions)
+- **License:** MIT. [Issues](https://github.com/alexanderenrique/NEMO-MQTT-Plugin/issues) · [Discussions](https://github.com/alexanderenrique/NEMO-MQTT-Plugin/discussions)

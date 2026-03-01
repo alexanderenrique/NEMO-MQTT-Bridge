@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
 from django.contrib.auth.models import User
 from nemo_mqtt.models import MQTTConfiguration
-from nemo_mqtt.signals import signal_handler
+from nemo_mqtt.signals import signal_handler, NEMO_AVAILABLE
 
 
 class MQTTSignalHandlerTest(TestCase):
@@ -30,7 +30,7 @@ class MQTTSignalHandlerTest(TestCase):
             retain_messages=False
         )
     
-    @patch('nemo_mqtt.signals.redis_publisher')
+    @patch('nemo_mqtt.signals.signal_handler.redis_publisher')
     def test_publish_message_success(self, mock_redis_publisher):
         """Test successful message publishing"""
         mock_redis_publisher.publish_event.return_value = True
@@ -44,10 +44,10 @@ class MQTTSignalHandlerTest(TestCase):
         call_args = mock_redis_publisher.publish_event.call_args
         self.assertEqual(call_args[0][0], topic)
         self.assertEqual(json.loads(call_args[0][1]), data)
-        self.assertEqual(call_args[0][2], 1)  # QoS
-        self.assertEqual(call_args[0][3], False)  # Retain
+        self.assertEqual(call_args[1]['qos'], 1)
+        self.assertEqual(call_args[1]['retain'], False)
     
-    @patch('nemo_mqtt.signals.redis_publisher')
+    @patch('nemo_mqtt.signals.signal_handler.redis_publisher')
     def test_publish_message_failure(self, mock_redis_publisher):
         """Test failed message publishing"""
         mock_redis_publisher.publish_event.return_value = False
@@ -59,7 +59,7 @@ class MQTTSignalHandlerTest(TestCase):
         
         mock_redis_publisher.publish_event.assert_called_once()
     
-    @patch('nemo_mqtt.signals.redis_publisher', None)
+    @patch('nemo_mqtt.signals.signal_handler.redis_publisher', None)
     def test_publish_message_no_redis(self):
         """Test message publishing when Redis is not available"""
         topic = 'nemo/tools/1/start'
@@ -75,14 +75,16 @@ class MQTTSignalHandlerTest(TestCase):
         self.assertFalse(config.retain_messages)
     
     def test_get_mqtt_config_no_config(self):
-        """Test getting MQTT configuration when none exists"""
+        """Test getting MQTT configuration when none exists - returns default object"""
         MQTTConfiguration.objects.all().delete()
         
         config = signal_handler._get_mqtt_config()
+        self.assertIsNotNone(config)
         self.assertEqual(config.qos_level, 1)  # Default value
         self.assertFalse(config.retain_messages)  # Default value
 
 
+@pytest.mark.skipif(not NEMO_AVAILABLE, reason="NEMO not installed or not in INSTALLED_APPS")
 class ToolSignalsTest(TestCase):
     """Test tool-related signal handlers"""
     
@@ -125,6 +127,7 @@ class ToolSignalsTest(TestCase):
         self.assertEqual(call_args[0][1]['tool_name'], tool.name)
 
 
+@pytest.mark.skipif(not NEMO_AVAILABLE, reason="NEMO not installed or not in INSTALLED_APPS")
 class UsageEventSignalsTest(TestCase):
     """Test usage event signal handlers"""
     

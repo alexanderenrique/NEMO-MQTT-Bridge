@@ -31,7 +31,7 @@ class MQTTConfigurationModelTest(TestCase):
         
         self.assertEqual(config.broker_host, 'localhost')
         self.assertEqual(config.broker_port, 1883)
-        self.assertEqual(config.qos_level, 0)
+        self.assertEqual(config.qos_level, 1)
         self.assertFalse(config.retain_messages)
         self.assertTrue(config.clean_session)
         self.assertTrue(config.auto_reconnect)
@@ -40,22 +40,18 @@ class MQTTConfigurationModelTest(TestCase):
         self.assertTrue(config.log_messages)
         self.assertEqual(config.log_level, 'INFO')
     
-    def test_tls_configuration(self):
-        """Test TLS configuration options"""
+    def test_hmac_configuration(self):
+        """Test HMAC configuration options"""
         config = MQTTConfiguration.objects.create(
-            name='TLS Config',
-            use_tls=True,
-            tls_version='tlsv1.2',
-            ca_cert_content='-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----',
-            client_cert_content='-----BEGIN CERTIFICATE-----\nCLIENT\n-----END CERTIFICATE-----',
-            client_key_content='-----BEGIN PRIVATE KEY-----\nKEY\n-----END PRIVATE KEY-----'
+            name='HMAC Config',
+            use_hmac=True,
+            hmac_secret_key='test-secret-key',
+            hmac_algorithm='sha256'
         )
         
-        self.assertTrue(config.use_tls)
-        self.assertEqual(config.tls_version, 'tlsv1.2')
-        self.assertIn('TEST', config.ca_cert_content)
-        self.assertIn('CLIENT', config.client_cert_content)
-        self.assertIn('KEY', config.client_key_content)
+        self.assertTrue(config.use_hmac)
+        self.assertEqual(config.hmac_secret_key, 'test-secret-key')
+        self.assertEqual(config.hmac_algorithm, 'sha256')
     
     def test_connection_settings(self):
         """Test connection management settings"""
