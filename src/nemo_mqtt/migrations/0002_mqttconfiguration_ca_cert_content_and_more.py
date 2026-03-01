@@ -6,23 +6,33 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('nemo_mqtt', '0001_initial'),
+        ("nemo_mqtt", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='mqttconfiguration',
-            name='ca_cert_content',
-            field=models.TextField(blank=True, help_text='CA certificate content (PEM format)', null=True),
+            model_name="mqttconfiguration",
+            name="ca_cert_content",
+            field=models.TextField(
+                blank=True, help_text="CA certificate content (PEM format)", null=True
+            ),
         ),
         migrations.AddField(
-            model_name='mqttconfiguration',
-            name='client_cert_content',
-            field=models.TextField(blank=True, help_text='Client certificate content (PEM format)', null=True),
+            model_name="mqttconfiguration",
+            name="client_cert_content",
+            field=models.TextField(
+                blank=True,
+                help_text="Client certificate content (PEM format)",
+                null=True,
+            ),
         ),
         migrations.AddField(
-            model_name='mqttconfiguration',
-            name='client_key_content',
-            field=models.TextField(blank=True, help_text='Client private key content (PEM format)', null=True),
+            model_name="mqttconfiguration",
+            name="client_key_content",
+            field=models.TextField(
+                blank=True,
+                help_text="Client private key content (PEM format)",
+                null=True,
+            ),
         ),
     ]

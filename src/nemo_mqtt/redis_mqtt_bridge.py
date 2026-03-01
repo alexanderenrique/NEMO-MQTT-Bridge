@@ -28,9 +28,12 @@ import paho.mqtt.client as mqtt
 import redis
 
 if __name__ == "__main__":
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings_dev')
+    sys.path.insert(
+        0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    )
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings_dev")
     import django
+
     django.setup()
 
 try:
@@ -42,7 +45,12 @@ except ImportError:
 
 try:
     from nemo_mqtt.connection_manager import ConnectionManager
-    from nemo_mqtt.redis_publisher import EVENTS_LIST_KEY, BRIDGE_CONTROL_KEY, BRIDGE_STATUS_KEY, BRIDGE_STATUS_TTL
+    from nemo_mqtt.redis_publisher import (
+        EVENTS_LIST_KEY,
+        BRIDGE_CONTROL_KEY,
+        BRIDGE_STATUS_KEY,
+        BRIDGE_STATUS_TTL,
+    )
     from nemo_mqtt.bridge.process_lock import acquire_lock, release_lock
     from nemo_mqtt.bridge.auto_services import (
         cleanup_existing_services,
@@ -52,7 +60,12 @@ try:
     from nemo_mqtt.bridge.mqtt_connection import connect_mqtt
 except ImportError:
     from NEMO.plugins.nemo_mqtt.connection_manager import ConnectionManager
-    from NEMO.plugins.nemo_mqtt.redis_publisher import EVENTS_LIST_KEY, BRIDGE_CONTROL_KEY, BRIDGE_STATUS_KEY, BRIDGE_STATUS_TTL
+    from NEMO.plugins.nemo_mqtt.redis_publisher import (
+        EVENTS_LIST_KEY,
+        BRIDGE_CONTROL_KEY,
+        BRIDGE_STATUS_KEY,
+        BRIDGE_STATUS_TTL,
+    )
     from NEMO.plugins.nemo_mqtt.bridge.process_lock import acquire_lock, release_lock
     from NEMO.plugins.nemo_mqtt.bridge.auto_services import (
         cleanup_existing_services,
@@ -61,7 +74,9 @@ except ImportError:
     )
     from NEMO.plugins.nemo_mqtt.bridge.mqtt_connection import connect_mqtt
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -99,8 +114,12 @@ class RedisMQTTBridge:
         # MQTT connection manager created in _initialize_mqtt() from config (max_retries, reconnect_delay)
         self.mqtt_connection_mgr = None
         self.redis_connection_mgr = ConnectionManager(
-            max_retries=None, base_delay=1, max_delay=30,
-            failure_threshold=5, success_threshold=3, timeout=60,
+            max_retries=None,
+            base_delay=1,
+            max_delay=30,
+            failure_threshold=5,
+            success_threshold=3,
+            timeout=60,
         )
 
         self.lock_file = acquire_lock()
@@ -144,11 +163,16 @@ class RedisMQTTBridge:
     def _initialize_redis(self):
         def connect():
             c = redis.Redis(
-                host='localhost', port=6379, db=1,
-                decode_responses=True, socket_connect_timeout=5, socket_timeout=5,
+                host="localhost",
+                port=6379,
+                db=1,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
             )
             c.ping()
             return c
+
         self.redis_client = self.redis_connection_mgr.connect_with_retry(connect)
         logger.info("Connected to Redis")
 
@@ -167,7 +191,11 @@ class RedisMQTTBridge:
             raise RuntimeError("No enabled MQTT configuration")
 
         # Create connection manager from config so max_retries and reconnect_delay are honored
-        max_retries = self.config.max_reconnect_attempts if self.config.max_reconnect_attempts else None  # 0 = unlimited
+        max_retries = (
+            self.config.max_reconnect_attempts
+            if self.config.max_reconnect_attempts
+            else None
+        )  # 0 = unlimited
         base_delay = getattr(self.config, "reconnect_delay", 5) or 5
         self.mqtt_connection_mgr = ConnectionManager(
             max_retries=max_retries,
@@ -182,7 +210,7 @@ class RedisMQTTBridge:
             self.config = get_mqtt_config()
             if not self.config or not self.config.enabled:
                 raise RuntimeError("No enabled MQTT configuration")
-            self.broker_host = self.config.broker_host or 'localhost'
+            self.broker_host = self.config.broker_host or "localhost"
             self.broker_port = self.config.broker_port or 1883
             return connect_mqtt(
                 self.config,
@@ -190,32 +218,51 @@ class RedisMQTTBridge:
                 self._on_disconnect,
                 self._on_publish,
             )
+
         self.mqtt_client = self.mqtt_connection_mgr.connect_with_retry(connect)
         self.connection_count += 1
         self.last_connect_time = time.time()
         self._last_reconnect_fail_msg = None  # Reset so next failure is logged
-        logger.info("Connected to MQTT broker at %s:%s", self.broker_host, self.broker_port)
+        logger.info(
+            "Connected to MQTT broker at %s:%s", self.broker_host, self.broker_port
+        )
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            self._write_bridge_status('connected')
+            self._write_bridge_status("connected")
             if self._mqtt_has_connected_before:
-                logger.info("Successfully reconnected to MQTT broker at %s:%s", self.broker_host, self.broker_port)
+                logger.info(
+                    "Successfully reconnected to MQTT broker at %s:%s",
+                    self.broker_host,
+                    self.broker_port,
+                )
             else:
-                logger.info("Connected to MQTT broker at %s:%s", self.broker_host, self.broker_port)
+                logger.info(
+                    "Connected to MQTT broker at %s:%s",
+                    self.broker_host,
+                    self.broker_port,
+                )
                 self._mqtt_has_connected_before = True
         else:
-            self._write_bridge_status('disconnected')
-            errors = {1: "protocol", 2: "client id", 3: "unavailable", 4: "bad auth", 5: "unauthorized"}
+            self._write_bridge_status("disconnected")
+            errors = {
+                1: "protocol",
+                2: "client id",
+                3: "unavailable",
+                4: "bad auth",
+                5: "unauthorized",
+            }
             logger.error("MQTT connection failed: %s (rc=%s)", errors.get(rc, rc), rc)
 
     def _on_disconnect(self, client, userdata, rc):
         self.last_disconnect_time = time.time()
-        self._write_bridge_status('disconnected')
+        self._write_bridge_status("disconnected")
         if rc != 0:
             now = time.time()
             rc_changed = self._last_disconnect_rc != rc
-            interval_elapsed = (now - self._last_disconnect_log_time) >= self._disconnect_log_interval
+            interval_elapsed = (
+                now - self._last_disconnect_log_time
+            ) >= self._disconnect_log_interval
             if rc_changed or interval_elapsed or self._last_disconnect_log_time == 0:
                 logger.warning("MQTT disconnected (rc=%s)", rc)
                 self._last_disconnect_log_time = now
@@ -226,7 +273,7 @@ class RedisMQTTBridge:
 
     def _write_bridge_status(self, status: str):
         """Write bridge connection status to Redis for the monitor page."""
-        if status not in ('connected', 'disconnected'):
+        if status not in ("connected", "disconnected"):
             return
         try:
             if self.redis_client:
@@ -247,7 +294,8 @@ class RedisMQTTBridge:
         except Exception as e:
             msg = str(e)
             should_log = (
-                (now - self._last_reconnect_fail_log_time) >= self._reconnect_fail_log_interval
+                (now - self._last_reconnect_fail_log_time)
+                >= self._reconnect_fail_log_interval
                 or msg != self._last_reconnect_fail_msg
             )
             if should_log:
@@ -270,7 +318,7 @@ class RedisMQTTBridge:
                 # Refresh "connected" status in Redis so monitor page stays up to date (TTL 90s)
                 now = time.time()
                 if (now - self._last_bridge_status_write) >= 30:
-                    self._write_bridge_status('connected')
+                    self._write_bridge_status("connected")
                     self._last_bridge_status_write = now
                 try:
                     self.redis_client.ping()
@@ -279,11 +327,14 @@ class RedisMQTTBridge:
                     self._initialize_redis()
                 # Check for config-reload request (e.g. after saving MQTT config in Admin)
                 control = self.redis_client.lpop(BRIDGE_CONTROL_KEY)
-                if control == 'reload_config':
-                    logger.info("Config reload requested, reconnecting to broker with latest settings")
+                if control == "reload_config":
+                    logger.info(
+                        "Config reload requested, reconnecting to broker with latest settings"
+                    )
                     try:
                         from django.core.cache import cache
-                        cache.delete('mqtt_active_config')
+
+                        cache.delete("mqtt_active_config")
                     except Exception as e:
                         logger.debug("Could not clear config cache: %s", e)
                     # Force fresh config from DB so broker username/password and HMAC are current
@@ -304,21 +355,24 @@ class RedisMQTTBridge:
     def _process_event(self, event_data: str):
         try:
             event = json.loads(event_data)
-            topic = event.get('topic')
-            payload = event.get('payload')
-            qos = event.get('qos', 0)
-            retain = event.get('retain', False)
+            topic = event.get("topic")
+            payload = event.get("payload")
+            qos = event.get("qos", 0)
+            retain = event.get("retain", False)
             # Debug: exact message from Nemo (Redis) and HMAC secret used for signing
             _secret = (self.config.hmac_secret_key or "") if self.config else ""
             logger.debug(
                 "HMAC debug: hmac_secret_key=%r, topic=%s, raw_payload_from_nemo=%r",
-                _secret, topic, payload,
+                _secret,
+                topic,
+                payload,
             )
             if topic and payload is not None:
                 self._publish_to_mqtt(topic, payload, qos, retain)
                 logger.debug(
                     "HMAC debug: hmac_secret_key=%r, topic=%s, published_to_mqtt=ok",
-                    _secret, topic,
+                    _secret,
+                    topic,
                 )
             else:
                 logger.warning("Invalid event: missing topic or payload")
@@ -327,18 +381,26 @@ class RedisMQTTBridge:
         except Exception as e:
             logger.error("Process event failed: %s", e)
 
-    def _publish_to_mqtt(self, topic: str, payload: str, qos: int = 0, retain: bool = False):
+    def _publish_to_mqtt(
+        self, topic: str, payload: str, qos: int = 0, retain: bool = False
+    ):
         if not self.mqtt_client or not self.mqtt_client.is_connected():
             logger.warning("MQTT not connected, cannot publish")
             return
         _secret = (self.config.hmac_secret_key or "") if self.config else ""
         logger.debug(
             "HMAC debug: hmac_secret_key=%r, topic=%s, payload_before_hmac=%r",
-            _secret, topic, payload,
+            _secret,
+            topic,
+            payload,
         )
         try:
             out_payload = payload
-            if self.config and getattr(self.config, "use_hmac", False) and getattr(self.config, "hmac_secret_key", None):
+            if (
+                self.config
+                and getattr(self.config, "use_hmac", False)
+                and getattr(self.config, "hmac_secret_key", None)
+            ):
                 try:
                     from nemo_mqtt.utils import sign_payload_hmac
                 except ImportError:
@@ -350,20 +412,28 @@ class RedisMQTTBridge:
                     )
                     logger.debug(
                         "HMAC debug: hmac_secret_key=%r, topic=%s, exact_mqtt_message_sent=%r",
-                        _secret, topic, out_payload,
+                        _secret,
+                        topic,
+                        out_payload,
                     )
                 except Exception as e:
                     logger.warning("HMAC signing failed, publishing unsigned: %s", e)
                     logger.debug(
                         "HMAC debug: hmac_secret_key=%r, topic=%s, unsigned_payload_sent=%r",
-                        _secret, topic, out_payload,
+                        _secret,
+                        topic,
+                        out_payload,
                     )
             else:
                 logger.debug(
                     "HMAC debug: hmac_secret_key=%r, topic=%s, exact_mqtt_message_sent=%r (no HMAC)",
-                    _secret, topic, out_payload,
+                    _secret,
+                    topic,
+                    out_payload,
                 )
-            result = self.mqtt_client.publish(topic, out_payload, qos=qos, retain=retain)
+            result = self.mqtt_client.publish(
+                topic, out_payload, qos=qos, retain=retain
+            )
             if result.rc != mqtt.MQTT_ERR_SUCCESS:
                 logger.error("Publish failed: rc=%s", result.rc)
         except Exception as e:
@@ -401,8 +471,11 @@ def get_mqtt_bridge():
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Redis-MQTT Bridge Service')
-    parser.add_argument('--auto', action='store_true', help='AUTO mode: start Redis and Mosquitto')
+
+    parser = argparse.ArgumentParser(description="Redis-MQTT Bridge Service")
+    parser.add_argument(
+        "--auto", action="store_true", help="AUTO mode: start Redis and Mosquitto"
+    )
     args = parser.parse_args()
 
     service = RedisMQTTBridge(auto_start=args.auto)

@@ -1,6 +1,7 @@
 """
 MQTT client connection setup (plain TCP; message authentication via HMAC on payloads).
 """
+
 import logging
 import os
 import socket
@@ -54,4 +55,6 @@ def connect_mqtt(
         client.disconnect()
     except Exception:
         pass
-    raise RuntimeError(f"Connection timeout to {broker_host}:{broker_port} after {timeout}s")
+    raise RuntimeError(
+        f"Connection timeout to {broker_host}:{broker_port} after {timeout}s"
+    )

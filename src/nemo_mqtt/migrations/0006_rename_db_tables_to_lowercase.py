@@ -19,7 +19,9 @@ def rename_tables_forward(apps, schema_editor):
     ]
     with connection.cursor() as cursor:
         for old_name, new_name in renames:
-            if _table_exists(connection, old_name) and not _table_exists(connection, new_name):
+            if _table_exists(connection, old_name) and not _table_exists(
+                connection, new_name
+            ):
                 cursor.execute(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"')
 
 
@@ -33,7 +35,9 @@ def rename_tables_reverse(apps, schema_editor):
     ]
     with connection.cursor() as cursor:
         for old_name, new_name in renames:
-            if _table_exists(connection, old_name) and not _table_exists(connection, new_name):
+            if _table_exists(connection, old_name) and not _table_exists(
+                connection, new_name
+            ):
                 cursor.execute(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"')
 
 

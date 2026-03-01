@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('nemo_mqtt', '0004_remove_server_cert_content'),
+        ("nemo_mqtt", "0004_remove_server_cert_content"),
     ]
 
     operations = [
@@ -15,6 +15,6 @@ class Migration(migrations.Migration):
         # since we removed the server certificate fields from the model
         migrations.RunSQL(
             "-- No database changes needed - fields were removed from model only",
-            reverse_sql="-- No reverse operation needed"
+            reverse_sql="-- No reverse operation needed",
         ),
     ]

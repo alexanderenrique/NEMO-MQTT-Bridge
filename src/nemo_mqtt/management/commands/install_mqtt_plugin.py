@@ -11,15 +11,17 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = 'Install the MQTT plugin (pip install + configure NEMO). Use setup_nemo_integration for config-only.'
+    help = "Install the MQTT plugin (pip install + configure NEMO). Use setup_nemo_integration for config-only."
 
     def add_arguments(self, parser):
-        parser.add_argument('--force', action='store_true', help='Force reinstall')
-        parser.add_argument('--backup', action='store_true', help='Create backup before modifying')
+        parser.add_argument("--force", action="store_true", help="Force reinstall")
+        parser.add_argument(
+            "--backup", action="store_true", help="Create backup before modifying"
+        )
 
     def handle(self, *args, **options):
         call_command(
-            'setup_nemo_integration',
+            "setup_nemo_integration",
             install_package=True,
-            backup=options['backup'],
+            backup=options["backup"],
         )

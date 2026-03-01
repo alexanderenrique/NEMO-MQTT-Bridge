@@ -20,22 +20,30 @@ import atexit
 from datetime import datetime
 
 # Add the project directory to the Python path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        )
+    ),
+)
 
 # Set up Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings_dev')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings_dev")
 django.setup()
 
 # Global lock file handle
 lock_file = None
 
+
 def acquire_lock():
     """Acquire an exclusive lock to prevent multiple instances"""
     global lock_file
-    lock_file_path = '/tmp/nemo_redis_monitor.lock'
-    
+    lock_file_path = "/tmp/nemo_redis_monitor.lock"
+
     try:
-        lock_file = open(lock_file_path, 'w')
+        lock_file = open(lock_file_path, "w")
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock_file.write(str(os.getpid()))
         lock_file.flush()
@@ -47,6 +55,7 @@ def acquire_lock():
         print(f"   rm {lock_file_path}")
         return False
 
+
 def release_lock():
     """Release the lock"""
     global lock_file
@@ -54,31 +63,34 @@ def release_lock():
         try:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             lock_file.close()
-            os.unlink('/tmp/nemo_redis_monitor.lock')
+            os.unlink("/tmp/nemo_redis_monitor.lock")
             print("Redis monitor lock released")
         except:
             pass
         lock_file = None
 
+
 def check_redis_messages():
     """Check for messages in Redis"""
     try:
         # Connect to Redis
-        r = redis.Redis(host='localhost', port=6379, db=1, decode_responses=True)  # Use database 1 for plugin isolation
+        r = redis.Redis(
+            host="localhost", port=6379, db=1, decode_responses=True
+        )  # Use database 1 for plugin isolation
         r.ping()
         print("[OK] Connected to Redis")
-        
+
         # Check current list length
-        list_length = r.llen('nemo_mqtt_events')
+        list_length = r.llen("nemo_mqtt_events")
         print(f"Current messages in Redis list: {list_length}")
-        
+
         if list_length > 0:
             print(f"\nRecent messages (last 10):")
             print("-" * 60)
-            
+
             # Get the last 10 messages (without removing them)
-            messages = r.lrange('nemo_mqtt_events', -10, -1)
-            
+            messages = r.lrange("nemo_mqtt_events", -10, -1)
+
             for i, message in enumerate(messages, 1):
                 try:
                     event_data = json.loads(message)
@@ -93,34 +105,37 @@ def check_redis_messages():
         else:
             print("No messages found in Redis list")
             print("\nTip: Try enabling/disabling a tool in NEMO to generate messages")
-        
+
         return True
-        
+
     except Exception as e:
         print(f"[ERROR] Error connecting to Redis: {e}")
         return False
 
+
 def monitor_redis_realtime():
     """Monitor Redis in real-time without consuming messages"""
     try:
-        r = redis.Redis(host='localhost', port=6379, db=1, decode_responses=True)  # Use database 1 for plugin isolation
+        r = redis.Redis(
+            host="localhost", port=6379, db=1, decode_responses=True
+        )  # Use database 1 for plugin isolation
         r.ping()
         print("[OK] Connected to Redis")
         print("\nMonitoring Redis for new messages...")
         print("   (Press Ctrl+C to stop)")
         print("-" * 60)
-        
-        last_count = r.llen('nemo_mqtt_events')
-        
+
+        last_count = r.llen("nemo_mqtt_events")
+
         while True:
-            current_count = r.llen('nemo_mqtt_events')
-            
+            current_count = r.llen("nemo_mqtt_events")
+
             if current_count > last_count:
                 new_messages = current_count - last_count
                 print(f"\n{new_messages} new message(s) detected!")
-                
+
                 # Get the new messages without removing them
-                messages = r.lrange('nemo_mqtt_events', -new_messages, -1)
+                messages = r.lrange("nemo_mqtt_events", -new_messages, -1)
                 for i, message in enumerate(messages, 1):
                     try:
                         event_data = json.loads(message)
@@ -129,44 +144,46 @@ def monitor_redis_realtime():
                         print(f"     Time: {datetime.now().isoformat()}")
                     except json.JSONDecodeError as e:
                         print(f"\n  {i}. Raw message: {message}")
-                
+
                 last_count = current_count
                 print("-" * 60)
-            
+
             time.sleep(0.05)  # Check every 50ms for even faster response
-            
+
     except KeyboardInterrupt:
         print("\nMonitoring stopped")
     except Exception as e:
         print(f"[ERROR] Error monitoring Redis: {e}")
 
+
 def main():
     print("Redis Message Checker")
     print("=" * 40)
-    
+
     # Try to acquire lock
     if not acquire_lock():
         return
-    
+
     # Register cleanup function
     atexit.register(release_lock)
-    
+
     try:
         if not check_redis_messages():
             return
-        
+
         print("\n" + "=" * 40)
         choice = input("Do you want to monitor in real-time? (y/n): ").lower().strip()
-        
-        if choice in ['y', 'yes']:
+
+        if choice in ["y", "yes"]:
             monitor_redis_realtime()
         else:
             print("Done!")
-    
+
     except KeyboardInterrupt:
         print("\nMonitoring stopped")
     finally:
         release_lock()
+
 
 if __name__ == "__main__":
     main()

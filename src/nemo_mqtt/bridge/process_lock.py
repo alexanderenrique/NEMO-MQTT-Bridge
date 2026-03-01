@@ -1,6 +1,7 @@
 """
 Process lock to prevent multiple Redis-MQTT bridge instances.
 """
+
 import fcntl
 import logging
 import os
@@ -9,7 +10,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-LOCK_PATH = os.path.join(tempfile.gettempdir(), 'nemo_mqtt_bridge.lock')
+LOCK_PATH = os.path.join(tempfile.gettempdir(), "nemo_mqtt_bridge.lock")
 
 
 def acquire_lock():
@@ -17,7 +18,7 @@ def acquire_lock():
     import signal
 
     try:
-        lock_file = open(LOCK_PATH, 'w')
+        lock_file = open(LOCK_PATH, "w")
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock_file.write(str(os.getpid()))
         lock_file.flush()
@@ -26,7 +27,7 @@ def acquire_lock():
         return lock_file
     except OSError:
         _cleanup_stale_lock()
-        lock_file = open(LOCK_PATH, 'w')
+        lock_file = open(LOCK_PATH, "w")
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock_file.write(str(os.getpid()))
         lock_file.flush()
@@ -42,7 +43,7 @@ def _cleanup_stale_lock():
     if not os.path.exists(LOCK_PATH):
         return
     try:
-        with open(LOCK_PATH, 'r') as f:
+        with open(LOCK_PATH, "r") as f:
             pid_str = f.read().strip()
         if not pid_str:
             os.remove(LOCK_PATH)
@@ -50,7 +51,9 @@ def _cleanup_stale_lock():
         old_pid = int(pid_str)
         try:
             os.kill(old_pid, 0)
-            logger.warning("Another bridge instance running (PID: %s), exiting", old_pid)
+            logger.warning(
+                "Another bridge instance running (PID: %s), exiting", old_pid
+            )
             sys.exit(1)
         except OSError:
             pass

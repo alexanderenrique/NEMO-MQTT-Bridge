@@ -14,59 +14,65 @@ from typing import Optional, Dict, Any
 logger = logging.getLogger(__name__)
 
 # Redis list keys (use lowercase for consistency with package name)
-EVENTS_LIST_KEY = 'nemo_mqtt_events'
-MONITOR_LIST_KEY = 'nemo_mqtt_monitor'
+EVENTS_LIST_KEY = "nemo_mqtt_events"
+MONITOR_LIST_KEY = "nemo_mqtt_monitor"
 MONITOR_LIST_MAXLEN = 100
-BRIDGE_CONTROL_KEY = 'nemo_mqtt_bridge_control'
-BRIDGE_STATUS_KEY = 'nemo_mqtt_bridge_status'
+BRIDGE_CONTROL_KEY = "nemo_mqtt_bridge_control"
+BRIDGE_STATUS_KEY = "nemo_mqtt_bridge_status"
 BRIDGE_STATUS_TTL = 90  # seconds; if bridge dies, status expires
 
 
 class RedisMQTTPublisher:
     """Publishes MQTT events to Redis for consumption by external MQTT service"""
-    
+
     def __init__(self):
         self.redis_client = None
         self._initialize_redis()
-    
+
     def _initialize_redis(self):
         """Initialize Redis client with retry logic"""
         max_retries = 5
         retry_delay = 1
-        
+
         for attempt in range(max_retries):
             try:
                 self.redis_client = redis.Redis(
-                    host='localhost',
+                    host="localhost",
                     port=6379,
                     db=1,  # Use database 1 for plugin isolation
                     decode_responses=True,
                     socket_connect_timeout=5,
-                    socket_timeout=5
+                    socket_timeout=5,
                 )
                 # Test connection
                 self.redis_client.ping()
                 logger.info("Connected to Redis for MQTT event publishing")
                 return
             except Exception as e:
-                logger.warning(f"Redis connection attempt {attempt + 1}/{max_retries} failed: {e}")
+                logger.warning(
+                    f"Redis connection attempt {attempt + 1}/{max_retries} failed: {e}"
+                )
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    logger.error(f"Failed to connect to Redis after {max_retries} attempts: {e}")
+                    logger.error(
+                        f"Failed to connect to Redis after {max_retries} attempts: {e}"
+                    )
                     self.redis_client = None
-    
-    def publish_event(self, topic: str, payload: str, qos: int = 0, retain: bool = False) -> bool:
+
+    def publish_event(
+        self, topic: str, payload: str, qos: int = 0, retain: bool = False
+    ) -> bool:
         """
         Publish an event to Redis for consumption by external MQTT service
-        
+
         Args:
             topic: MQTT topic
             payload: Message payload
             qos: Quality of Service level
             retain: Whether to retain the message
-            
+
         Returns:
             bool: True if published successfully, False otherwise
         """
@@ -88,11 +94,11 @@ class RedisMQTTPublisher:
 
         try:
             event = {
-                'topic': topic,
-                'payload': payload,
-                'qos': qos,
-                'retain': retain,
-                'timestamp': time.time()
+                "topic": topic,
+                "payload": payload,
+                "qos": qos,
+                "retain": retain,
+                "timestamp": time.time(),
             }
 
             # Publish to Redis list (consumed by bridge)
@@ -108,7 +114,7 @@ class RedisMQTTPublisher:
         except Exception as e:
             logger.error("Failed to publish event to Redis: %s", e)
             return False
-    
+
     def get_monitor_messages(self) -> list:
         """
         Return recent events from the monitor list (what NEMO has published to Redis).
@@ -125,20 +131,25 @@ class RedisMQTTPublisher:
         for i, s in enumerate(raw):
             try:
                 event = json.loads(s)
-                ts = event.get('timestamp')
+                ts = event.get("timestamp")
                 if ts is not None:
-                    timestamp = datetime.utcfromtimestamp(ts).strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z'
+                    timestamp = (
+                        datetime.utcfromtimestamp(ts).strftime("%Y-%m-%dT%H:%M:%S.%f")
+                        + "Z"
+                    )
                 else:
                     timestamp = None
-                messages.append({
-                    'id': i + 1,
-                    'timestamp': timestamp,
-                    'source': 'Redis',
-                    'topic': event.get('topic', ''),
-                    'payload': event.get('payload', ''),
-                    'qos': event.get('qos', 0),
-                    'retain': event.get('retain', False),
-                })
+                messages.append(
+                    {
+                        "id": i + 1,
+                        "timestamp": timestamp,
+                        "source": "Redis",
+                        "topic": event.get("topic", ""),
+                        "payload": event.get("payload", ""),
+                        "qos": event.get("qos", 0),
+                        "retain": event.get("retain", False),
+                    }
+                )
             except (json.JSONDecodeError, TypeError):
                 continue
         return messages
@@ -177,16 +188,19 @@ class RedisMQTTPublisher:
 # Global instance
 redis_publisher = RedisMQTTPublisher()
 
-def publish_mqtt_event(topic: str, payload: str, qos: int = 0, retain: bool = False) -> bool:
+
+def publish_mqtt_event(
+    topic: str, payload: str, qos: int = 0, retain: bool = False
+) -> bool:
     """
     Convenience function to publish MQTT events via Redis
-    
+
     Args:
         topic: MQTT topic
         payload: Message payload
         qos: Quality of Service level
         retain: Whether to retain the message
-        
+
     Returns:
         bool: True if published successfully, False otherwise
     """
@@ -202,10 +216,14 @@ def notify_bridge_reload_config() -> bool:
         client = redis_publisher.redis_client
         if client is None:
             client = redis.Redis(
-                host='localhost', port=6379, db=1,
-                decode_responses=True, socket_connect_timeout=2, socket_timeout=2,
+                host="localhost",
+                port=6379,
+                db=1,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2,
             )
-        client.lpush(BRIDGE_CONTROL_KEY, 'reload_config')
+        client.lpush(BRIDGE_CONTROL_KEY, "reload_config")
         logger.debug("Notified bridge to reload config")
         return True
     except Exception as e:
