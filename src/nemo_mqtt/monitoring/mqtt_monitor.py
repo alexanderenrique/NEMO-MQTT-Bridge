@@ -53,7 +53,7 @@ class MQTTMonitor:
             self.redis_client = redis.Redis(
                 host='localhost',
                 port=6379,
-                db=0,
+                db=1,  # Same as plugin (redis_publisher) so we see the same events
                 decode_responses=True
             )
             self.redis_client.ping()

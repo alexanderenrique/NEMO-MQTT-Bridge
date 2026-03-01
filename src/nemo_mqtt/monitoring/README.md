@@ -12,10 +12,9 @@ python -m nemo_mqtt.monitoring.mqtt_monitor
 
 # Redis-only checking
 python -m nemo_mqtt.monitoring.redis_checker
-
-# Test MQTT signals
-python manage.py test_mqtt_api
 ```
+
+To generate test traffic, enable or disable a tool in the NEMO web interface; the monitor will show the corresponding Redis and MQTT messages.
 
 Or use the run_monitor runner (requires manage.py in cwd):
 
@@ -24,6 +23,8 @@ python -m nemo_mqtt.monitoring.run_monitor mqtt
 python -m nemo_mqtt.monitoring.run_monitor redis
 python -m nemo_mqtt.monitoring.run_monitor test
 ```
+
+The `test` option runs `manage.py test_mqtt_api` if that management command exists in your NEMO project; otherwise use the NEMO UI to enable/disable tools and watch the monitor.
 
 ## Files
 
@@ -41,28 +42,30 @@ The plugin’s web dashboard at **`/mqtt/monitor/`** shows a **stream of what NE
 ```bash
 python -m nemo_mqtt.monitoring.mqtt_monitor
 ```
-- Connects to both Redis and MQTT broker
+- Connects to Redis (db=1, same as the plugin) and the MQTT broker
 - Subscribes to all `nemo/#` topics
 - Shows real-time messages from both sources
 - Press Ctrl+C to stop
+
+**Note:** The script consumes from the same Redis list (`nemo_mqtt_events`) as the Redis–MQTT bridge. If the bridge is running, only one of them will receive each message. For a non-consuming view of what the plugin publishes, use the web dashboard at `/mqtt/monitor/` or the Redis checker in read-only mode.
 
 ### Redis Checker
 ```bash
 python -m nemo_mqtt.monitoring.redis_checker
 ```
-- Connects to Redis only
+- Connects to Redis only (db=1, same as the plugin)
 - Shows current message count
 - Displays recent messages
 - Option to monitor in real-time
 
-### Test Signals
-```bash
-python manage.py test_mqtt_api
-```
-- Tests MQTT plugin functionality
-- Creates test configuration
-- Emits test signals
-- Publishes test messages
+### Generating test traffic
+
+To see messages in the monitor:
+
+1. Enable or disable a tool in the NEMO web interface (Tool Control or similar).
+2. Watch the full MQTT monitor or Redis checker for `nemo/tools/{id}/enabled` and `nemo/tools/{id}/disabled` messages.
+
+If your NEMO project provides a `test_mqtt_api` management command, you can run `python manage.py test_mqtt_api` instead; this plugin does not ship that command.
 
 ## Configuration Settings
 
@@ -84,7 +87,7 @@ The **Keep Alive** setting (default: 60 seconds) controls how the MQTT client ma
 - **Increase (120-300 seconds)**: Useful for battery-constrained devices or when you want to reduce network traffic. Allows longer periods between messages.
 - **Decrease (30 seconds)**: Provides faster detection of disconnections, useful in unstable network environments.
 
-**Note**: Since the NEMO MQTT plugin publishes messages regularly (tool events, area events, etc.), the keep-alive interval primarily serves as a connection health check rather than the primary mechanism for maintaining connectivity.
+**Note**: The plugin publishes **tool enable/disable** events when users start or stop tool usage in NEMO. Those messages keep the connection active; the keep-alive interval mainly acts as a connection health check.
 
 ## Tool enable/disable: single source of truth (UsageEvent.post_save)
 
