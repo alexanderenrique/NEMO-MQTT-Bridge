@@ -4,7 +4,7 @@ Tests for NEMO MQTT Plugin models
 import pytest
 from django.test import TestCase
 from django.core.exceptions import ValidationError
-from nemo_mqtt.models import MQTTConfiguration, MQTTMessageLog, MQTTEventFilter
+from NEMO_mqtt.models import MQTTConfiguration, MQTTMessageLog, MQTTEventFilter
 
 
 class MQTTConfigurationModelTest(TestCase):

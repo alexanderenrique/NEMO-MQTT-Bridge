@@ -37,42 +37,42 @@ if __name__ == "__main__":
     django.setup()
 
 try:
-    from nemo_mqtt.models import MQTTConfiguration
-    from nemo_mqtt.utils import get_mqtt_config
+    from NEMO_mqtt.models import MQTTConfiguration
+    from NEMO_mqtt.utils import get_mqtt_config
 except ImportError:
-    from NEMO.plugins.nemo_mqtt.models import MQTTConfiguration
-    from NEMO.plugins.nemo_mqtt.utils import get_mqtt_config
+    from NEMO.plugins.NEMO_mqtt.models import MQTTConfiguration
+    from NEMO.plugins.NEMO_mqtt.utils import get_mqtt_config
 
 try:
-    from nemo_mqtt.connection_manager import ConnectionManager
-    from nemo_mqtt.redis_publisher import (
+    from NEMO_mqtt.connection_manager import ConnectionManager
+    from NEMO_mqtt.redis_publisher import (
         EVENTS_LIST_KEY,
         BRIDGE_CONTROL_KEY,
         BRIDGE_STATUS_KEY,
         BRIDGE_STATUS_TTL,
     )
-    from nemo_mqtt.bridge.process_lock import acquire_lock, release_lock
-    from nemo_mqtt.bridge.auto_services import (
+    from NEMO_mqtt.bridge.process_lock import acquire_lock, release_lock
+    from NEMO_mqtt.bridge.auto_services import (
         cleanup_existing_services,
         start_redis,
         start_mosquitto,
     )
-    from nemo_mqtt.bridge.mqtt_connection import connect_mqtt
+    from NEMO_mqtt.bridge.mqtt_connection import connect_mqtt
 except ImportError:
-    from NEMO.plugins.nemo_mqtt.connection_manager import ConnectionManager
-    from NEMO.plugins.nemo_mqtt.redis_publisher import (
+    from NEMO.plugins.NEMO_mqtt.connection_manager import ConnectionManager
+    from NEMO.plugins.NEMO_mqtt.redis_publisher import (
         EVENTS_LIST_KEY,
         BRIDGE_CONTROL_KEY,
         BRIDGE_STATUS_KEY,
         BRIDGE_STATUS_TTL,
     )
-    from NEMO.plugins.nemo_mqtt.bridge.process_lock import acquire_lock, release_lock
-    from NEMO.plugins.nemo_mqtt.bridge.auto_services import (
+    from NEMO.plugins.NEMO_mqtt.bridge.process_lock import acquire_lock, release_lock
+    from NEMO.plugins.NEMO_mqtt.bridge.auto_services import (
         cleanup_existing_services,
         start_redis,
         start_mosquitto,
     )
-    from NEMO.plugins.nemo_mqtt.bridge.mqtt_connection import connect_mqtt
+    from NEMO.plugins.NEMO_mqtt.bridge.mqtt_connection import connect_mqtt
 
 logger = logging.getLogger(__name__)
 
@@ -399,9 +399,9 @@ class RedisMQTTBridge:
                 and getattr(self.config, "hmac_secret_key", None)
             ):
                 try:
-                    from nemo_mqtt.utils import sign_payload_hmac
+                    from NEMO_mqtt.utils import sign_payload_hmac
                 except ImportError:
-                    from NEMO.plugins.nemo_mqtt.utils import sign_payload_hmac
+                    from NEMO.plugins.NEMO_mqtt.utils import sign_payload_hmac
                 try:
                     out_payload = sign_payload_hmac(
                         payload,

@@ -22,7 +22,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'nemo_mqtt',
+    'NEMO_mqtt',
 ]
 
 MIDDLEWARE = [
@@ -106,7 +106,7 @@ LOGGING = {
         },
     },
     'loggers': {
-        'nemo_mqtt': {
+        'NEMO_mqtt': {
             'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': True,

@@ -17,8 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings_dev')
 django.setup()
 
-from nemo_mqtt.views import monitor
-from nemo_mqtt.redis_publisher import redis_publisher
+from NEMO_mqtt.views import monitor
+from NEMO_mqtt.redis_publisher import redis_publisher
 
 def test_monitor():
     print("🧪 Testing MQTT Monitor API")
@@ -72,7 +72,7 @@ def test_monitor():
     # Test API endpoint
     print("7. Testing API endpoint...")
     from django.test import RequestFactory
-    from nemo_mqtt.views import mqtt_monitor_api
+    from NEMO_mqtt.views import mqtt_monitor_api
     
     factory = RequestFactory()
     request = factory.get('/monitor/api/')

@@ -6,8 +6,8 @@ import json
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
 from django.contrib.auth.models import User
-from nemo_mqtt.models import MQTTConfiguration
-from nemo_mqtt.signals import signal_handler, NEMO_AVAILABLE
+from NEMO_mqtt.models import MQTTConfiguration
+from NEMO_mqtt.signals import signal_handler, NEMO_AVAILABLE
 
 
 class MQTTSignalHandlerTest(TestCase):
@@ -30,7 +30,7 @@ class MQTTSignalHandlerTest(TestCase):
             retain_messages=False
         )
     
-    @patch('nemo_mqtt.signals.signal_handler.redis_publisher')
+    @patch('NEMO_mqtt.signals.signal_handler.redis_publisher')
     def test_publish_message_success(self, mock_redis_publisher):
         """Test successful message publishing"""
         mock_redis_publisher.publish_event.return_value = True
@@ -47,7 +47,7 @@ class MQTTSignalHandlerTest(TestCase):
         self.assertEqual(call_args[1]['qos'], 1)
         self.assertEqual(call_args[1]['retain'], False)
     
-    @patch('nemo_mqtt.signals.signal_handler.redis_publisher')
+    @patch('NEMO_mqtt.signals.signal_handler.redis_publisher')
     def test_publish_message_failure(self, mock_redis_publisher):
         """Test failed message publishing"""
         mock_redis_publisher.publish_event.return_value = False
@@ -59,7 +59,7 @@ class MQTTSignalHandlerTest(TestCase):
         
         mock_redis_publisher.publish_event.assert_called_once()
     
-    @patch('nemo_mqtt.signals.signal_handler.redis_publisher', None)
+    @patch('NEMO_mqtt.signals.signal_handler.redis_publisher', None)
     def test_publish_message_no_redis(self):
         """Test message publishing when Redis is not available"""
         topic = 'nemo/tools/1/start'
@@ -103,7 +103,7 @@ class ToolSignalsTest(TestCase):
             broker_port=1883
         )
     
-    @patch('nemo_mqtt.signals.signal_handler.publish_message')
+    @patch('NEMO_mqtt.signals.signal_handler.publish_message')
     def test_tool_saved_signal(self, mock_publish):
         """Test tool save signal handler"""
         from NEMO.models import Tool
@@ -116,7 +116,7 @@ class ToolSignalsTest(TestCase):
         
         # The signal should be triggered automatically
         # We need to manually trigger it for testing
-        from nemo_mqtt.signals import tool_saved
+        from NEMO_mqtt.signals import tool_saved
         tool_saved(Tool, tool, created=True)
         
         mock_publish.assert_called_once()
@@ -146,7 +146,7 @@ class UsageEventSignalsTest(TestCase):
             broker_port=1883
         )
     
-    @patch('nemo_mqtt.signals.signal_handler.publish_message')
+    @patch('NEMO_mqtt.signals.signal_handler.publish_message')
     def test_usage_event_start_signal(self, mock_publish):
         """Test usage event start signal"""
         from NEMO.models import Tool, UsageEvent
@@ -162,7 +162,7 @@ class UsageEventSignalsTest(TestCase):
         )
         
         # Manually trigger the signal
-        from nemo_mqtt.signals import usage_event_saved
+        from NEMO_mqtt.signals import usage_event_saved
         usage_event_saved(UsageEvent, usage_event, created=True)
         
         mock_publish.assert_called_once()
@@ -171,7 +171,7 @@ class UsageEventSignalsTest(TestCase):
         self.assertEqual(call_args[0][1]['event'], 'tool_usage_start')
         self.assertEqual(call_args[0][1]['tool_name'], tool.name)
     
-    @patch('nemo_mqtt.signals.signal_handler.publish_message')
+    @patch('NEMO_mqtt.signals.signal_handler.publish_message')
     def test_usage_event_end_signal(self, mock_publish):
         """Test usage event end signal"""
         from NEMO.models import Tool, UsageEvent
@@ -188,7 +188,7 @@ class UsageEventSignalsTest(TestCase):
         )
         
         # Manually trigger the signal
-        from nemo_mqtt.signals import usage_event_saved
+        from NEMO_mqtt.signals import usage_event_saved
         usage_event_saved(UsageEvent, usage_event, created=True)
         
         mock_publish.assert_called_once()

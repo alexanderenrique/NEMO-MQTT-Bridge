@@ -9,13 +9,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def test_package_import():
     """Test that the package can be imported"""
-    import nemo_mqtt
-    assert hasattr(nemo_mqtt, '__version__') or True  # Version may not be set
+    import NEMO_mqtt
+    assert hasattr(NEMO_mqtt, '__version__') or True  # Version may not be set
     print("✅ Package imported successfully")
 
 def test_models_import():
     """Test that models can be imported"""
-    from nemo_mqtt.models import MQTTConfiguration, MQTTMessageLog, MQTTEventFilter
+    from NEMO_mqtt.models import MQTTConfiguration, MQTTMessageLog, MQTTEventFilter
     assert MQTTConfiguration is not None
     assert MQTTMessageLog is not None
     assert MQTTEventFilter is not None
@@ -23,13 +23,13 @@ def test_models_import():
 
 def test_redis_publisher_import():
     """Test that Redis publisher can be imported"""
-    from nemo_mqtt.redis_publisher import RedisMQTTPublisher
+    from NEMO_mqtt.redis_publisher import RedisMQTTPublisher
     assert RedisMQTTPublisher is not None
     print("✅ Redis publisher imported successfully")
 
 def test_signal_handler_import():
     """Test that signal handler can be imported"""
-    from nemo_mqtt.signals import MQTTSignalHandler
+    from NEMO_mqtt.signals import MQTTSignalHandler
     assert MQTTSignalHandler is not None
     print("✅ Signal handler imported successfully")
 

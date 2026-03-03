@@ -5,7 +5,7 @@ import pytest
 import json
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
-from nemo_mqtt.redis_publisher import RedisMQTTPublisher
+from NEMO_mqtt.redis_publisher import RedisMQTTPublisher
 
 
 class RedisMQTTPublisherTest(TestCase):
@@ -53,7 +53,7 @@ class RedisMQTTPublisherTest(TestCase):
         self.assertIsNone(self.publisher.redis_client)
         self.assertEqual(mock_redis.ping.call_count, 5)  # Max retries
     
-    @patch('nemo_mqtt.redis_publisher.RedisMQTTPublisher._initialize_redis')
+    @patch('NEMO_mqtt.redis_publisher.RedisMQTTPublisher._initialize_redis')
     def test_publish_event_no_redis(self, mock_initialize):
         """Test publishing event when Redis is not available"""
         self.publisher.redis_client = None

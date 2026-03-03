@@ -7,7 +7,7 @@ from unittest.mock import patch
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
 
-from nemo_mqtt.models import MQTTConfiguration
+from NEMO_mqtt.models import MQTTConfiguration
 
 
 class MQTTMonitorViewTest(TestCase):
@@ -45,7 +45,7 @@ class MQTTMonitorViewTest(TestCase):
         response = self.client.get("/mqtt/monitor/api/")
         self.assertEqual(response.status_code, 302)  # Redirect to login
 
-    @patch("nemo_mqtt.redis_publisher.redis_publisher")
+    @patch("NEMO_mqtt.redis_publisher.redis_publisher")
     def test_mqtt_monitor_api_returns_messages(self, mock_redis_publisher):
         """Test MQTT monitor API returns messages from Redis"""
         mock_redis_publisher.get_monitor_messages.return_value = [
@@ -72,7 +72,7 @@ class MQTTMonitorViewTest(TestCase):
         self.assertEqual(data["broker_connected"], "connected")
         self.assertEqual(data["messages"][0]["topic"], "nemo/tools/1/start")
 
-    @patch("nemo_mqtt.redis_publisher.redis_publisher")
+    @patch("NEMO_mqtt.redis_publisher.redis_publisher")
     def test_mqtt_monitor_api_empty_messages(self, mock_redis_publisher):
         """Test MQTT monitor API when no messages in Redis"""
         mock_redis_publisher.get_monitor_messages.return_value = []
@@ -87,7 +87,7 @@ class MQTTMonitorViewTest(TestCase):
         self.assertEqual(data["count"], 0)
         self.assertTrue(data["monitoring"])
 
-    @patch("nemo_mqtt.redis_publisher.redis_publisher")
+    @patch("NEMO_mqtt.redis_publisher.redis_publisher")
     def test_mqtt_monitor_api_handles_exception(self, mock_redis_publisher):
         """Test MQTT monitor API handles Redis errors gracefully"""
         mock_redis_publisher.get_monitor_messages.side_effect = Exception("Redis unavailable")

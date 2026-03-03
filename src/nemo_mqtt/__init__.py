@@ -9,4 +9,4 @@ __version__ = "1.0.0"
 __author__ = "Alex Denton"
 __email__ = "alexdenton998@gmail.com"
 
-default_app_config = "nemo_mqtt.apps.MqttPluginConfig"
+default_app_config = "NEMO_mqtt.apps.MqttPluginConfig"

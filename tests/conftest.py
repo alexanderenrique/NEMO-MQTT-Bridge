@@ -23,7 +23,7 @@ def django_db_setup(django_db_setup, django_db_blocker):
 @pytest.fixture
 def mqtt_config():
     """Create a test MQTT configuration."""
-    from nemo_mqtt.models import MQTTConfiguration
+    from NEMO_mqtt.models import MQTTConfiguration
     return MQTTConfiguration.objects.create(
         name='Test Config',
         enabled=True,

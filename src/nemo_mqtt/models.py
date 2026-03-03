@@ -185,7 +185,7 @@ class MQTTEventFilter(models.Model):
 def clear_mqtt_config_cache_on_save(sender, instance, **kwargs):
     """Clear the MQTT configuration cache when a configuration is saved and notify bridge to reload."""
     cache.delete("mqtt_active_config")
-    from nemo_mqtt.redis_publisher import notify_bridge_reload_config
+    from .redis_publisher import notify_bridge_reload_config
 
     notify_bridge_reload_config()
 
