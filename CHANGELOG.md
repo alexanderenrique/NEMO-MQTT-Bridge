@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 
+## [1.0.4] - 2026-03-13
+
+- Consolidated migrations for fresh installs: replaced 10 migrations (0001–0010) with a single `0001_initial` that creates the production schema directly.
+  - Removed migrations that were only for local/testing evolution (TLS cert paths, server certs, table renames, TLS→HMAC transition, QoS fix).
+  - Fresh installs now run one migration instead of 10.
+
+
 ## [1.0.3] - 2026-03-13
 
 - Aligned Django app label with package name to fix migration mismatch:
