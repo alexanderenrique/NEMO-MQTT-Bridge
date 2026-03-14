@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
         # Create a test request
         factory = RequestFactory()
-        request = factory.get("/mqtt/monitor/api/")
+        request = factory.get("/mqtt/mqtt_monitor/api/")
 
         # Get or create a test user
         user, created = User.objects.get_or_create(

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def test_api():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    url = "http://127.0.0.1:8000/mqtt/monitor/api/"
+    url = "http://127.0.0.1:8000/mqtt/mqtt_monitor/api/"
 
     logger.info("Testing MQTT Monitor API...")
     logger.info("URL: %s", url)

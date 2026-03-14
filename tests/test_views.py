@@ -30,19 +30,19 @@ class MQTTMonitorViewTest(TestCase):
 
     def test_mqtt_monitor_requires_login(self):
         """Test that MQTT monitor page requires login"""
-        response = self.client.get("/mqtt/monitor/")
+        response = self.client.get("/mqtt/mqtt_monitor/")
         self.assertEqual(response.status_code, 302)  # Redirect to login
 
     def test_mqtt_monitor_authenticated(self):
         """Test MQTT monitor page with authenticated user"""
         self.client.login(username="testuser", password="testpass123")
-        response = self.client.get("/mqtt/monitor/")
+        response = self.client.get("/mqtt/mqtt_monitor/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"NEMO MQTT Monitor", response.content)
 
     def test_mqtt_monitor_api_requires_login(self):
         """Test that MQTT monitor API requires login"""
-        response = self.client.get("/mqtt/monitor/api/")
+        response = self.client.get("/mqtt/mqtt_monitor/api/")
         self.assertEqual(response.status_code, 302)  # Redirect to login
 
     @patch("NEMO_mqtt_bridge.db_publisher.db_publisher")
@@ -62,7 +62,7 @@ class MQTTMonitorViewTest(TestCase):
         mock_db_publisher.get_bridge_status.return_value = "connected"
 
         self.client.login(username="testuser", password="testpass123")
-        response = self.client.get("/mqtt/monitor/api/")
+        response = self.client.get("/mqtt/mqtt_monitor/api/")
 
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
@@ -79,7 +79,7 @@ class MQTTMonitorViewTest(TestCase):
         mock_db_publisher.get_bridge_status.return_value = None
 
         self.client.login(username="testuser", password="testpass123")
-        response = self.client.get("/mqtt/monitor/api/")
+        response = self.client.get("/mqtt/mqtt_monitor/api/")
 
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
@@ -93,7 +93,7 @@ class MQTTMonitorViewTest(TestCase):
         mock_db_publisher.get_monitor_messages.side_effect = Exception("DB unavailable")
 
         self.client.login(username="testuser", password="testpass123")
-        response = self.client.get("/mqtt/monitor/api/")
+        response = self.client.get("/mqtt/mqtt_monitor/api/")
 
         self.assertEqual(response.status_code, 500)
         data = json.loads(response.content)

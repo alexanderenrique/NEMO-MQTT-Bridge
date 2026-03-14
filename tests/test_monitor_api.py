@@ -57,7 +57,7 @@ def test_monitor():
     from NEMO_mqtt_bridge.views import mqtt_monitor_api
 
     factory = RequestFactory()
-    request = factory.get('/monitor/api/')
+    request = factory.get('/mqtt_monitor/api/')
     request.user = None  # Skip auth for test
 
     try:

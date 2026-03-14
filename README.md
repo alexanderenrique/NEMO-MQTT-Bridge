@@ -56,7 +56,7 @@ python manage.py migrate NEMO_mqtt_bridge
 1. `pip install nemo-mqtt-bridge`
 2. Add `'NEMO_mqtt_bridge'` to `INSTALLED_APPS` in your settings.
 3. (Optional) If you use Django's `LOGGING` setting, add a `NEMO_mqtt_bridge` logger with your preferred level and handlers (e.g. DEBUG in dev/test, INFO or WARNING in production). What and how you log is installation-dependent.
-4. Add `path("mqtt/", include("NEMO_mqtt_bridge.urls"))` to `NEMO/urls.py` (or run `python manage.py setup_nemo_integration --write-urls`). **Without this, `/mqtt/monitor/` will return 404.**
+4. Add `path("mqtt/", include("NEMO_mqtt_bridge.urls"))` to `NEMO/urls.py` (or run `python manage.py setup_nemo_integration --write-urls`). **Skip this step for Docker/pip installs**—NEMO auto-includes plugin URLs (see [Plugin URLs](#plugin-urls)).
 5. Run `python manage.py migrate NEMO_mqtt_bridge`.
 
 ### After install
@@ -68,8 +68,24 @@ python manage.py migrate NEMO_mqtt_bridge
 
 **Docker:** You can run in AUTO mode with the embedded broker (no extra container) by default. The plugin uses mqttools (pure Python) as an in-process MQTT broker—no mosquitto binary needed. To use an external broker instead, set `NEMO_MQTT_BRIDGE_AUTO_START=0` and point NEMO's MQTT config to your broker (e.g. `broker_host=mqtt` if using a service named `mqtt` in docker-compose).
 
+### Plugin URLs
+
+The plugin exposes two URLs:
+
+| URL | Purpose |
+|-----|---------|
+| `/mqtt_monitor/` | Web dashboard: event stream from the queue (last 100 events), auto-refreshes every 3 seconds |
+| `/mqtt_monitor/api/` | JSON API: returns recent events and bridge status for the monitor page |
+
+**Where to find them** depends on how NEMO loads the plugin:
+
+- **Docker / pip-installed NEMO:** NEMO auto-includes URLs from apps whose names start with `NEMO`. The plugin is mounted at the root, so use **`/mqtt_monitor/`** and **`/mqtt_monitor/api/`**. No manual URL config needed.
+- **Source install with `--write-urls`:** If you add `path("mqtt/", include("NEMO_mqtt_bridge.urls"))` to `NEMO/urls.py`, the URLs are under `/mqtt/`: **`/mqtt/mqtt_monitor/`** and **`/mqtt/mqtt_monitor/api/`**.
+
+Both paths require login. If you get a 404, check which URL scheme your NEMO uses (auto-include vs manual).
+
 ---
 
-- **Monitoring:** Event stream at `/mqtt/monitor/`; CLI tools in `NEMO_mqtt_bridge.monitoring` (see `src/NEMO_mqtt_bridge/monitoring/README.md`).
+- **Monitoring:** Event stream at `/mqtt_monitor/` (Docker) or `/mqtt/mqtt_monitor/` (manual URL include); CLI tools in `NEMO_mqtt_bridge.monitoring` (see `src/NEMO_mqtt_bridge/monitoring/README.md`).
 - **HMAC:** Optional payload signing
 - **License:** MIT. [Issues](https://github.com/alexanderenrique/NEMO-MQTT-Plugin/issues) · [Discussions](https://github.com/alexanderenrique/NEMO-MQTT-Plugin/discussions)

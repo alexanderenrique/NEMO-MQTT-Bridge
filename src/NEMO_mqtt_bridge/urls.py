@@ -9,6 +9,6 @@ app_name = "mqtt_plugin"
 
 urlpatterns = [
     # MQTT Monitoring Dashboard
-    path("monitor/", views.mqtt_monitor, name="monitor"),
-    path("monitor/api/", views.mqtt_monitor_api, name="monitor_api"),
+    path("mqtt_monitor/", views.mqtt_monitor, name="monitor"),
+    path("mqtt_monitor/api/", views.mqtt_monitor_api, name="monitor_api"),
 ]

@@ -34,7 +34,7 @@ The `test` option runs `manage.py test_mqtt_api` if that management command exis
 
 ## Web monitor
 
-The plugin's web dashboard at **`/mqtt/monitor/`** shows a **stream of what NEMO publishes**: it reads from the MQTTEventQueue table (last 100 events). This is the same pipeline that the PostgreSQL–MQTT bridge consumes. The page auto-refreshes every 3 seconds.
+The plugin's web dashboard at **`/mqtt/mqtt_monitor/`** shows a **stream of what NEMO publishes**: it reads from the MQTTEventQueue table (last 100 events). This is the same pipeline that the PostgreSQL–MQTT bridge consumes. The page auto-refreshes every 3 seconds.
 
 ## Usage
 

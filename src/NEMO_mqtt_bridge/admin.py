@@ -3,7 +3,7 @@ Admin interface for MQTT plugin models.
 """
 
 from django.contrib import admin
-from .models import MQTTConfiguration, MQTTMessageLog, MQTTEventFilter
+from .models import MQTTConfiguration, MQTTEventFilter
 
 
 @admin.register(MQTTConfiguration)
@@ -85,18 +85,6 @@ class MQTTConfigurationAdmin(admin.ModelAdmin):
             return "Unknown"
 
     connection_status.short_description = "Connection Status"
-
-
-@admin.register(MQTTMessageLog)
-class MQTTMessageLogAdmin(admin.ModelAdmin):
-    list_display = ["topic", "success", "sent_at", "qos", "retained"]
-    list_filter = ["success", "qos", "retained", "sent_at"]
-    search_fields = ["topic", "payload", "error_message"]
-    readonly_fields = ["sent_at"]
-    date_hierarchy = "sent_at"
-
-    def has_add_permission(self, request):
-        return False  # Prevent manual creation of log entries
 
 
 @admin.register(MQTTEventFilter)

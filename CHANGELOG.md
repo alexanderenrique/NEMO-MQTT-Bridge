@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.1] - 2026-03-14
+
+- **Monitor page path**: Monitor dashboard URL changed from `/monitor/` to **`/mqtt_monitor/`** (with manual URL include: `/mqtt/mqtt_monitor/`). Use `/mqtt_monitor/api/` (or `/mqtt/mqtt_monitor/api/`) for the events API.
+- **Monitor page / Docker**: Fixed "error retrieving events" on the monitor page when the app is served under a path without the `/mqtt` prefix (e.g. `/mqtt_monitor/` in Docker). The monitor now uses a relative API path (`api/`) so it works with any URL prefix.
+
 ## [2.1.0] - 2026-03-14
 
 - **Embedded MQTT broker**: AUTO mode uses mqttools (pure Python) as an in-process broker. No mosquitto binary required—works in Docker and single-container deployments.
@@ -67,7 +72,7 @@ All notable changes to this project will be documented in this file.
 - Initial public release of the NEMO_mqtt_bridge plugin.
 - Full MQTT integration for NEMO tool, area, reservation, and usage events.
 - Redis–MQTT bridge architecture for reliable event delivery.
-- Web-based monitoring dashboard at `/mqtt/monitor/`.
+- Web-based monitoring dashboard at `/mqtt/mqtt_monitor/`.
 - Comprehensive configuration options via Django admin and customization UI.
 - AUTO and EXTERNAL service modes for development and production.
 - HMAC-SHA256 message authentication for payload integrity and authenticity.

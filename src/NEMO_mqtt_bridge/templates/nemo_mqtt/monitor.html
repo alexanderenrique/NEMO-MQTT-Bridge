@@ -164,7 +164,8 @@ let allMessages = [];
 let messagesList, debugLogElement, messageCount;
 
 function fetchMessages() {
-    const url = '/mqtt/monitor/api/';
+    // Relative path so the API works with any URL prefix (/mqtt/mqtt_monitor/ or /mqtt_monitor/ in Docker)
+    const url = 'api/';
     fetch(url)
         .then(response => response.json())
         .then(data => {
