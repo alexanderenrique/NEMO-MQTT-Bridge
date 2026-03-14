@@ -25,7 +25,7 @@ class MqttPluginConfig(AppConfig):
             logger.info("MQTT plugin already initialized, skipping...")
             return
 
-        if "migrate" in self.get_migration_args():
+        if self.get_migration_args():
             logger.info("Migration detected, skipping MQTT plugin initialization")
             return
 
@@ -124,10 +124,14 @@ class MqttPluginConfig(AppConfig):
             )
 
     def get_migration_args(self):
-        """Get migration-related command line arguments"""
+        """Get migration-related command line arguments (migrate, makemigrations, showmigrations, etc.)"""
         import sys
 
-        return [arg for arg in sys.argv if "migrate" in arg or "makemigrations" in arg]
+        return [
+            arg
+            for arg in sys.argv
+            if "migrate" in arg or "makemigrations" in arg or "showmigrations" in arg
+        ]
 
     def disconnect_mqtt(self):
         """Disconnect MQTT client when app is shutting down"""

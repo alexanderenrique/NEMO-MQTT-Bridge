@@ -9,7 +9,7 @@ This bridge:
   3. For each event from the queue, publishes to the broker
 
 Requires PostgreSQL. Modes:
-  - AUTO: Starts Mosquitto for development
+  - AUTO: Starts embedded MQTT broker (mqttools, pure Python)
   - EXTERNAL: Connects to existing services (production)
 """
 import json
@@ -427,6 +427,14 @@ class PostgresMQTTBridge:
                 pass
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5)
+        if self.auto_start and self.mosquitto_process is not None:
+            # Shut down embedded broker if we started one
+            if hasattr(self.mosquitto_process, "shutdown"):
+                try:
+                    self.mosquitto_process.shutdown()
+                except Exception as e:
+                    logger.debug("Embedded broker shutdown: %s", e)
+            self.mosquitto_process = None
         if self.auto_start:
             cleanup_existing_services(None)
         release_lock(self.lock_file)
@@ -437,12 +445,31 @@ _mqtt_bridge_instance = None
 _mqtt_bridge_lock = threading.Lock()
 
 
+def _should_auto_start_mosquitto() -> bool:
+    """
+    Whether to start an embedded MQTT broker (AUTO mode).
+    Default True for local dev; set NEMO_MQTT_BRIDGE_AUTO_START=0 for EXTERNAL mode.
+    """
+    env_val = os.environ.get("NEMO_MQTT_BRIDGE_AUTO_START", "").strip().lower()
+    if env_val in ("0", "false", "no", "off"):
+        return False
+    try:
+        from django.conf import settings
+
+        if hasattr(settings, "NEMO_MQTT_BRIDGE_AUTO_START"):
+            return bool(settings.NEMO_MQTT_BRIDGE_AUTO_START)
+    except Exception:
+        pass
+    return True
+
+
 def get_mqtt_bridge():
     """Get or create the global bridge instance."""
     global _mqtt_bridge_instance
     with _mqtt_bridge_lock:
         if _mqtt_bridge_instance is None:
-            _mqtt_bridge_instance = PostgresMQTTBridge(auto_start=True)
+            auto_start = _should_auto_start_mosquitto()
+            _mqtt_bridge_instance = PostgresMQTTBridge(auto_start=auto_start)
         return _mqtt_bridge_instance
 
 

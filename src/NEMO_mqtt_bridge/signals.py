@@ -57,23 +57,17 @@ class MQTTSignalHandler:
             self.db_publisher = None
 
     def _get_mqtt_config(self):
-        """Get MQTT configuration from database"""
-        try:
-            config = MQTTConfiguration.objects.filter(enabled=True).first()
-            if config:
-                return config
-            else:
-                # Return default config if none found
-                return MQTTConfiguration(
-                    qos_level=1,  # Default to QoS 1 for reliability
-                    retain_messages=False,
-                )
-        except Exception as e:
-            logger.warning(f"Failed to get MQTT configuration: {e}")
-            # Return default config on error
-            return MQTTConfiguration(
-                qos_level=1, retain_messages=False  # Default to QoS 1 for reliability
-            )
+        """Get MQTT configuration from database (uses guarded utils to avoid DB query during migrations)"""
+        from .utils import get_mqtt_config
+
+        config = get_mqtt_config()
+        if config:
+            return config
+        # Return default config if none found or table not yet migrated
+        return MQTTConfiguration(
+            qos_level=1,  # Default to QoS 1 for reliability
+            retain_messages=False,
+        )
 
     def publish_message(self, topic, data):
         """Publish a message via PostgreSQL queue to external MQTT service"""

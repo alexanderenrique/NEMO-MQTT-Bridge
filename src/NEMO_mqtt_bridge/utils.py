@@ -35,6 +35,11 @@ def get_mqtt_config(force_refresh: bool = False) -> Optional["MQTTConfiguration"
 
     # Force refresh or cache miss - query database
     try:
+        from django.db import connection
+
+        if "nemo_mqtt_mqttconfiguration" not in connection.introspection.table_names():
+            return None
+
         from .models import MQTTConfiguration
 
         config = MQTTConfiguration.objects.filter(enabled=True).first()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nemo-mqtt-bridge"
-version = "2.0.0"
+version = "2.1.0"
 description = "MQTT integration plugin for NEMO tool usage events"
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,7 @@ dependencies = [
     "paho-mqtt>=1.6.1",
     "Django>=3.2",
     "psycopg2-binary>=2.9",
+    "mqttools>=0.50.0",
 ]
 
 [project.optional-dependencies]

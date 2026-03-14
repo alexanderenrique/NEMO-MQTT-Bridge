@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.test import RequestFactory
 from django.contrib.auth.models import User
-from ..views import mqtt_monitor_api
+from ...views import mqtt_monitor_api
 import json
 
 

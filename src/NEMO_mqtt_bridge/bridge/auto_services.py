@@ -1,12 +1,14 @@
 """
-AUTO mode: start Mosquitto for development/testing.
+AUTO mode: start embedded MQTT broker for development/testing.
 
-PostgreSQL is used for the event queue; no Redis needed.
+Uses mqttools (pure Python, no separate binary). PostgreSQL is used for the
+event queue; no Redis needed.
 """
 
 import logging
 import subprocess
 import time
+from typing import Any, Optional
 
 import paho.mqtt.client as mqtt
 
@@ -14,11 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 def cleanup_existing_services(redis_process=None):
-    """Clean up any existing MQTT broker and bridge instances.
+    """Clean up any existing bridge instances.
     redis_process is ignored (kept for API compatibility)."""
     try:
-        subprocess.run(["pkill", "-f", "mosquitto"], capture_output=True)
-        subprocess.run(["pkill", "-9", "mosquitto"], capture_output=True)
         subprocess.run(["pkill", "-f", "postgres_mqtt_bridge"], capture_output=True)
         time.sleep(2)
         logger.info("Cleaned up existing services")
@@ -26,35 +26,40 @@ def cleanup_existing_services(redis_process=None):
         logger.warning("Cleanup warning: %s", e)
 
 
-def start_mosquitto(config) -> subprocess.Popen:
-    """Start Mosquitto broker (plain TCP, no TLS)."""
+def start_mqtt_broker(config: Any) -> Optional[Any]:
+    """
+    Start embedded MQTT broker for AUTO mode.
+    Returns broker controller or None if broker already running on port.
+    """
     broker_port = config.broker_port if config else 1883
+
+    # Check if broker already running
     try:
-        tc = mqtt.Client(client_id="mosquitto_check")
+        tc = mqtt.Client(client_id="broker_check")
         tc.connect("localhost", broker_port, 5)
         tc.disconnect()
-        logger.info("Mosquitto already running on port %s", broker_port)
+        logger.info("MQTT broker already running on port %s", broker_port)
         return None
     except Exception:
         pass
 
-    proc = subprocess.Popen(
-        ["mosquitto", "-p", str(broker_port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    for i in range(20):
+    try:
+        from NEMO_mqtt_bridge.bridge.embedded_broker import EmbeddedBrokerController
+    except ImportError:
         try:
-            tc = mqtt.Client(client_id=f"mosquitto_check_{i}")
-            tc.connect("localhost", broker_port, 5)
-            tc.loop_start()
-            time.sleep(0.5)
-            if tc.is_connected():
-                tc.loop_stop()
-                tc.disconnect()
-                logger.info("Mosquitto started on port %s", broker_port)
-                return proc
-        except Exception:
-            time.sleep(1)
-    raise RuntimeError(f"Mosquitto failed to start within 20 seconds")
+            from NEMO.plugins.NEMO_mqtt_bridge.bridge.embedded_broker import (
+                EmbeddedBrokerController,
+            )
+        except ImportError:
+            raise RuntimeError(
+                "Embedded broker requires mqttools. Install with: pip install mqttools"
+            )
+
+    controller = EmbeddedBrokerController(port=broker_port)
+    controller.start()
+    return controller
+
+
+def start_mosquitto(config: Any) -> Optional[Any]:
+    """Alias for start_mqtt_broker (backward compatibility)."""
+    return start_mqtt_broker(config)

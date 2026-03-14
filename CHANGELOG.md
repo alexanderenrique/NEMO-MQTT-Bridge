@@ -3,12 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 
+## [2.1.0] - 2026-03-14
+
+- **Embedded MQTT broker**: AUTO mode uses mqttools (pure Python) as an in-process broker. No mosquitto binary required—works in Docker and single-container deployments.
+- **Docker / production**: Added `NEMO_MQTT_BRIDGE_AUTO_START` env var and Django setting. Set to `0` or `false` to use EXTERNAL mode (connect to external broker). Fixes `[Errno 2] No such file or directory: 'mosquitto'` when running in containers.
+
 ## [2.0.0] - 2026-03-13
 
 - **PostgreSQL LISTEN/NOTIFY**: Replaced Redis with PostgreSQL for the event queue.
   - Django signals insert into `MQTTEventQueue` and use `pg_notify` to wake the bridge.
   - Bridge uses `LISTEN` for instant event delivery (no polling).
-  - Requires NEMO to use PostgreSQL; no Redis or redislite needed.
+  - Requires NEMO to use PostgreSQL 12+ (15, 16, 17, 18 tested); no Redis or redislite needed.
   - New models: `MQTTEventQueue`, `MQTTBridgeStatus`.
   - Run bridge: `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge`
   - Dependencies: removed `redis`, `redislite`; added `psycopg2-binary`.

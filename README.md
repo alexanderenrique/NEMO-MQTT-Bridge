@@ -27,7 +27,7 @@ Configuration is stored in Django (e.g. `/customization/mqtt/`) and loaded by th
 
 ## Installation
 
-**Prerequisites:** Python 3.8+, Django 3.2+, NEMO-CE 4.0+, MQTT broker (e.g. Mosquitto), **PostgreSQL** (NEMO's database). The plugin uses the same PostgreSQL database as NEMO; no Redis required.
+**Prerequisites:** Python 3.8+, Django 3.2+, NEMO-CE 4.0+, MQTT broker (e.g. Mosquitto), **PostgreSQL 12+** (NEMO's database; 15, 16, 17, 18 tested). The plugin uses the same PostgreSQL database as NEMO; no Redis required.
 
 **Simplified deployment:** The plugin package is `NEMO_mqtt_bridge`. Add `'NEMO_mqtt_bridge'` to `INSTALLED_APPS`, then run `python manage.py setup_nemo_integration` (use `--write-urls` to add the URL include to `NEMO/urls.py`) and `python manage.py migrate NEMO_mqtt_bridge`.
 
@@ -56,15 +56,17 @@ python manage.py migrate NEMO_mqtt_bridge
 1. `pip install nemo-mqtt-bridge`
 2. Add `'NEMO_mqtt_bridge'` to `INSTALLED_APPS` in your settings.
 3. (Optional) If you use Django's `LOGGING` setting, add a `NEMO_mqtt_bridge` logger with your preferred level and handlers (e.g. DEBUG in dev/test, INFO or WARNING in production). What and how you log is installation-dependent.
-4. run `python manage.py setup_nemo_integration` to print integration steps, or add `path("mqtt/", include("NEMO_mqtt_bridge.urls"))` to `NEMO/urls.py` yourself. Use `--write-urls` to have the command add the URL include.
+4. Add `path("mqtt/", include("NEMO_mqtt_bridge.urls"))` to `NEMO/urls.py` (or run `python manage.py setup_nemo_integration --write-urls`). **Without this, `/mqtt/monitor/` will return 404.**
 5. Run `python manage.py migrate NEMO_mqtt_bridge`.
 
 ### After install
 
 1. **Configure**: Open `/customization/mqtt/` in NEMO, set broker host/port (and auth if needed), enable the config.
-2. **Start NEMO** (e.g. `python manage.py runserver`). With the default AUTO mode, the plugin uses the PostgreSQL–MQTT bridge and a local Mosquitto broker for development.
+2. **Start NEMO** (e.g. `python manage.py runserver`). With the default AUTO mode, the plugin uses the PostgreSQL–MQTT bridge and an embedded MQTT broker (mqttools, pure Python) for development. No separate broker binary required.
 
-**Production:** Use EXTERNAL mode so the plugin does not start or kill brokers: set `PostgresMQTTBridge(auto_start=False)` in `NEMO_mqtt_bridge/apps.py` (or configure the bridge to not auto-start Mosquitto). Then start the MQTT broker yourself, and run the bridge separately (e.g. `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` or as a systemd service).
+**Production:** Use EXTERNAL mode so the plugin does not start or kill brokers. Set `NEMO_MQTT_BRIDGE_AUTO_START=0` (env) or `NEMO_MQTT_BRIDGE_AUTO_START = False` in Django settings. Then start the MQTT broker yourself, and run the bridge separately (e.g. `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` or as a systemd service).
+
+**Docker:** You can run in AUTO mode with the embedded broker (no extra container) by default. The plugin uses mqttools (pure Python) as an in-process MQTT broker—no mosquitto binary needed. To use an external broker instead, set `NEMO_MQTT_BRIDGE_AUTO_START=0` and point NEMO's MQTT config to your broker (e.g. `broker_host=mqtt` if using a service named `mqtt` in docker-compose).
 
 ---
 

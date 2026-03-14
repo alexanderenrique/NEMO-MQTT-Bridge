@@ -117,9 +117,9 @@ class PostgresMQTTBridgeOperationalModesTest(TestCase):
         """Document AUTO mode behavior"""
         auto_mode_desc = """
         AUTO Mode (Development/Testing):
-        - Automatically starts Mosquitto MQTT broker
+        - Automatically starts embedded MQTT broker (mqttools, pure Python)
         - Connects to PostgreSQL (Django DATABASES)
-        - Ideal for local development and testing
+        - Ideal for local development and Docker (no separate broker container)
 
         Start with: python postgres_mqtt_bridge.py --auto
         """
