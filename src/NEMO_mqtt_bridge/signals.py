@@ -5,10 +5,12 @@ These signals will trigger MQTT message publishing when NEMO events occur.
 
 import json
 import logging
+
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.conf import settings
 from django.core.cache import cache
+from django.utils import timezone
 
 from .models import MQTTConfiguration
 
@@ -34,6 +36,13 @@ def _check_nemo_availability():
 NEMO_AVAILABLE, Tool, Area, User, Reservation, UsageEvent, AreaAccessRecord = (
     _check_nemo_availability()
 )
+
+# Try to import NEMO's custom tool operational signals.
+try:
+    from NEMO.signals import tool_enabled as nemo_tool_enabled, tool_disabled as nemo_tool_disabled
+except (ImportError, RuntimeError):  # pragma: no cover - depends on NEMO being installed
+    nemo_tool_enabled = None
+    nemo_tool_disabled = None
 
 logger = logging.getLogger(__name__)
 
@@ -239,3 +248,59 @@ if NEMO_AVAILABLE:
                 "timestamp": instance._state.adding,
             }
             signal_handler.publish_message(f"nemo/area_access/{instance.id}", data)
+
+    # Tool operational / non-operational signals (distinct from usage)
+    if nemo_tool_enabled is not None and nemo_tool_disabled is not None:
+
+        @receiver(nemo_tool_enabled, sender=Tool)
+        def tool_operational(sender, instance: Tool, **kwargs):
+            """
+            Publish an event when a tool becomes operational again.
+            This reflects tool.operational transitions (up/down), independent of usage.
+            """
+            if not signal_handler.db_publisher:
+                logger.warning("DB publisher not available (tool_operational)")
+                return
+
+            data = {
+                "event": "tool_operational",
+                "tool_id": instance.id,
+                "tool_name": instance.name,
+                "operational": True,
+                "timestamp": timezone.now().isoformat(),
+            }
+
+            topic = f"nemo/tools/{instance.id}/operational"
+            logger.debug(
+                "Publishing tool_operational event via queue: topic=%s data=%s",
+                topic,
+                json.dumps(data),
+            )
+            signal_handler.publish_message(topic, data)
+
+        @receiver(nemo_tool_disabled, sender=Tool)
+        def tool_non_operational(sender, instance: Tool, **kwargs):
+            """
+            Publish an event when a tool is marked non-operational (down).
+            This is distinct from tool usage enable/disable and follows NEMO's
+            operational status logic in determine_tool_status().
+            """
+            if not signal_handler.db_publisher:
+                logger.warning("DB publisher not available (tool_non_operational)")
+                return
+
+            data = {
+                "event": "tool_non_operational",
+                "tool_id": instance.id,
+                "tool_name": instance.name,
+                "operational": False,
+                "timestamp": timezone.now().isoformat(),
+            }
+
+            topic = f"nemo/tools/{instance.id}/non-operational"
+            logger.debug(
+                "Publishing tool_non_operational event via queue: topic=%s data=%s",
+                topic,
+                json.dumps(data),
+            )
+            signal_handler.publish_message(topic, data)

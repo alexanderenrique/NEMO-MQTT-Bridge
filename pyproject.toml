@@ -116,7 +116,7 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "DJANGO", "FIRSTPARTY", "LOCALFOLD
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.test_settings"
 python_files = ["test_*.py", "*_test.py"]
-addopts = "-v --tb=short --cov=NEMO_mqtt_bridge --cov-report=html --cov-report=term-missing --ignore=tests/test_monitor_api.py --ignore=tests/test_api.py"
+addopts = "-v --tb=short --cov=NEMO_mqtt_bridge --cov-report=html --cov-report=term-missing"
 testpaths = ["tests"]
 
 [tool.coverage.run]

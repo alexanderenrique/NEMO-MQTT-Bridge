@@ -3,7 +3,7 @@ Admin interface for MQTT plugin models.
 """
 
 from django.contrib import admin
-from .models import MQTTConfiguration, MQTTEventFilter
+from .models import MQTTConfiguration
 
 
 @admin.register(MQTTConfiguration)
@@ -87,18 +87,3 @@ class MQTTConfigurationAdmin(admin.ModelAdmin):
     connection_status.short_description = "Connection Status"
 
 
-@admin.register(MQTTEventFilter)
-class MQTTEventFilterAdmin(admin.ModelAdmin):
-    list_display = [
-        "event_type",
-        "enabled",
-        "topic_override",
-        "include_payload",
-        "updated_at",
-    ]
-    list_filter = ["enabled", "include_payload", "updated_at"]
-    search_fields = ["event_type", "topic_override"]
-    fieldsets = (
-        ("Event Settings", {"fields": ("event_type", "enabled")}),
-        ("Topic Configuration", {"fields": ("topic_override", "include_payload")}),
-    )

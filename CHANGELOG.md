@@ -2,11 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3] - 2026-03-16
+
+- **Tool operational / non-operational MQTT events**: The plugin now publishes per-tool **operational status** messages, distinct from usage (enable/disable).
+  - Listens to NEMO’s custom `tool_enabled` and `tool_disabled` signals (emitted when `tool.operational` changes, e.g. when a task forces a shutdown or problems are cleared).
+  - **Topics**: `nemo/tools/{id}/operational` when a tool becomes operational again; `nemo/tools/{id}/non-operational` when a tool is marked down.
+  - Payload includes `event`, `tool_id`, `tool_name`, `operational` (boolean), and `timestamp` (ISO). Displays can use these topics to show “tool down” / “tool OK” indicators in real time, independent of who is using the tool.
+  - Optional event filter types `tool_operational` and `tool_non_operational` in MQTT customization; documentation in README and `monitoring/README.md`.
+
+## [2.1.2] - 2026-03-16
+
+- **Monitor page / API**: Removed the `/mqtt_monitor/api/` endpoint and the live event feed on the monitor page. The monitor now shows only MQTT configuration status (HMAC, Authentication, Connection).
+- Removed unusued logging from detailed admin
+- Removed unused event configuration from detail admin (logic is still in codebase, not currently implemented)
 
 ## [2.1.1] - 2026-03-14
 
-- **Monitor page path**: Monitor dashboard URL changed from `/monitor/` to **`/mqtt_monitor/`** (with manual URL include: `/mqtt/mqtt_monitor/`). Use `/mqtt_monitor/api/` (or `/mqtt/mqtt_monitor/api/`) for the events API.
-- **Monitor page / Docker**: Fixed "error retrieving events" on the monitor page when the app is served under a path without the `/mqtt` prefix (e.g. `/mqtt_monitor/` in Docker). The monitor now uses a relative API path (`api/`) so it works with any URL prefix.
+- **Monitor page path**: Monitor dashboard URL changed from `/monitor/` to **`/mqtt_monitor/`** (with manual URL include: `/mqtt/mqtt_monitor/`).
+
 
 ## [2.1.0] - 2026-03-14
 

@@ -29,281 +29,57 @@
         font-size: 1.1rem;
         font-weight: 600;
     }
-    
-    .monitor-controls {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-    }
-    
-    .status-indicator {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        margin-right: 6px;
-    }
-    
-    .status-running {
-        background-color: #28a745;
-        animation: pulse 2s infinite;
-    }
-    
-    .status-stopped {
-        background-color: #dc3545;
-    }
-    
-    @keyframes pulse {
-        0% { opacity: 1; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
-    }
-    
-    .terminal-log {
-        background: #1e1e1e;
-        border: 1px solid #3d3d3d;
-        border-radius: 6px;
-        padding: 16px;
-        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-        font-size: 13px;
-        line-height: 1.5;
-        color: #d4d4d4;
-        max-height: 70vh;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-break: break-word;
-    }
-    
-    .terminal-log .log-block {
-        margin-bottom: 1em;
-    }
-    
-    .terminal-log .log-line {
-        margin: 0;
-        padding: 0;
-    }
-    
-    .terminal-log .log-line.topic { color: #9cdcfe; }
-    .terminal-log .log-line.data  { color: #ce9178; }
-    .terminal-log .log-line.qos   { color: #dcdcaa; }
-    .terminal-log .log-line.ok    { color: #4ec9b0; }
-    .terminal-log .log-line.next  { color: #808080; }
-    
-    .terminal-log .no-messages {
-        color: #808080;
-        font-style: italic;
-    }
-    
-    .messages-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-        font-size: 0.9em;
-        color: #808080;
-    }
-    
-    .message-count {
-        background: #3d3d3d;
-        color: #d4d4d4;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.85em;
-    }
-    
-    .btn {
-        padding: 6px 14px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.85em;
-        font-weight: 500;
-        background: #0e639c;
-        color: white;
-    }
-    
-    .btn:hover {
-        background: #1177bb;
-    }
-    
-    .connection-status {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.85em;
-        color: #808080;
-    }
-    
-    .connection-ok { color: #4ec9b0; }
-    .connection-error { color: #f48771; }
-    
-    .debug-toggle {
-        font-size: 0.8em;
-        color: #808080;
-        cursor: pointer;
-        user-select: none;
-    }
-    .debug-toggle:hover { color: #a0a0a0; }
-    #debug-info {
-        margin-top: 10px;
-        padding: 8px 12px;
+
+    .status-card {
         background: #2d2d2d;
-        border-radius: 4px;
-        font-family: monospace;
-        font-size: 11px;
-        color: #808080;
-        display: none;
+        border-radius: 6px;
+        padding: 16px 20px;
+        color: #e0e0e0;
     }
-    #debug-info.visible { display: block; }
+    .status-card .status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #3d3d3d;
+    }
+    .status-card .status-row:last-child { border-bottom: none; }
 </style>
 {% endblock %}
 
 {% block content %}
-<script>
-let allMessages = [];
-let messagesList, debugLogElement, messageCount;
-
-function fetchMessages() {
-    // Relative path so the API works with any URL prefix (/mqtt/mqtt_monitor/ or /mqtt_monitor/ in Docker)
-    const url = 'api/';
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            allMessages = data.messages || [];
-            displayMessages();
-            updateConnectionStatus(data.monitoring);
-            updateBrokerStatus(data.broker_connected);
-        })
-        .catch(error => {
-            console.error('Error fetching messages:', error);
-            if (messagesList) messagesList.innerHTML = '<div class="no-messages">Error fetching messages.</div>';
-        });
-}
-
-function updateConnectionStatus(monitoring) {
-    const el = document.getElementById('mqtt-status');
-    if (!el) return;
-    el.className = monitoring ? 'status-indicator status-running' : 'status-indicator status-stopped';
-}
-
-function updateBrokerStatus(broker_connected) {
-    const el = document.getElementById('broker-status');
-    if (!el) return;
-    const badge = broker_connected === 'connected'
-        ? '<span class="badge badge-success">Connected</span>'
-        : broker_connected === 'disconnected'
-            ? '<span class="badge badge-danger">Disconnected</span>'
-            : '<span class="badge badge-secondary">Unknown</span>';
-    el.innerHTML = badge;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function prettyPrintJson(jsonString) {
-    try {
-        const parsed = JSON.parse(jsonString);
-        return escapeHtml(JSON.stringify(parsed, null, 2));
-    } catch (e) {
-        return escapeHtml(jsonString);
-    }
-}
-
-// Display each message as terminal-style block (same as signals.py print output)
-function displayMessages() {
-    if (!messagesList) return;
-    const filtered = allMessages;
-    
-    if (filtered.length === 0) {
-        messagesList.innerHTML = '<div class="no-messages">No messages yet. Events published by NEMO will appear here (same as terminal).</div>';
-        if (messageCount) messageCount.textContent = '0';
-        return;
-    }
-    
-    const messagesToShow = filtered.slice(0, 50);  // 50 most recent (API returns newest first)
-    const html = messagesToShow.map((msg, index) => {
-        const topic = escapeHtml(msg.topic || '');
-        const dataPretty = prettyPrintJson(msg.payload || '{}');
-        const dataLines = dataPretty.split('\n').map((line, i) => i === 0 ? line : '   ' + line).join('\n');
-        return '<div class="log-block">' +
-            '<div class="log-line topic">   Topic: ' + topic + '</div>' +
-            '<div class="log-line data">   Data: ' + dataLines + '</div>' +
-            '</div>';
-    }).join('');
-    
-    messagesList.innerHTML = html;
-    if (messageCount) messageCount.textContent = messagesToShow.length;
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    messagesList = document.getElementById('messages-list');
-    debugLogElement = document.getElementById('debug-log');
-    messageCount = document.getElementById('message-count');
-    
-    fetchMessages();
-    setInterval(fetchMessages, 3000);
-    
-    const debugToggle = document.getElementById('debug-toggle');
-    const debugInfo = document.getElementById('debug-info');
-    if (debugToggle && debugInfo) {
-        debugToggle.addEventListener('click', function() {
-            debugInfo.classList.toggle('visible');
-        });
-    }
-});
-</script>
 <div class="monitor-container">
     <div class="monitor-header">
         <h1>{{ title }}</h1>
-        <div class="monitor-controls">
-            <div class="connection-status">
-                <span class="status-indicator status-running" id="mqtt-status" title="Event stream"></span>
-            </div>
-        </div>
     </div>
-    
+
     {% if mqtt_config %}
-    <div class="alert alert-info mb-3">
-        <h5><i class="fas fa-cog"></i> MQTT Configuration</h5>
-        <div class="row">
-            <div class="col-md-6">
-                <strong>Broker:</strong> {{ mqtt_config.broker_host }}:{{ mqtt_config.broker_port }}<br>
-                <strong>Client ID:</strong> {{ mqtt_config.client_id }}<br>
-                <strong>Configuration:</strong> {{ mqtt_config.name }}
-            </div>
-            <div class="col-md-6">
-                <strong>HMAC:</strong> 
-                {% if mqtt_config.use_hmac %}
-                    <span class="badge badge-success">Enabled (SHA-256)</span>
-                {% else %}
-                    <span class="badge badge-warning">Disabled</span>
-                {% endif %}<br>
-                <strong>Authentication:</strong> 
-                {% if mqtt_config.username %}
-                    <span class="badge badge-info">Username/Password</span>
-                {% else %}
-                    <span class="badge badge-secondary">None</span>
-                {% endif %}<br>
-                <strong>Config:</strong> 
-                {% if mqtt_config.enabled %}
-                    <span class="badge badge-success">Active</span>
-                {% else %}
-                    <span class="badge badge-danger">Disabled</span>
-                {% endif %}<br>
-                <strong>Broker:</strong> 
-                <span id="broker-status">
-                {% if broker_connected == 'connected' %}
-                    <span class="badge badge-success">Connected</span>
-                {% elif broker_connected == 'disconnected' %}
-                    <span class="badge badge-danger">Disconnected</span>
-                {% else %}
-                    <span class="badge badge-secondary">Unknown</span>
-                {% endif %}
-                </span>
-            </div>
+    <div class="status-card">
+        <div class="status-row">
+            <strong>HMAC</strong>
+            {% if mqtt_config.use_hmac %}
+                <span class="badge badge-success">Enabled (SHA-256)</span>
+            {% else %}
+                <span class="badge badge-warning">Disabled</span>
+            {% endif %}
+        </div>
+        <div class="status-row">
+            <strong>Authentication</strong>
+            {% if mqtt_config.username %}
+                <span class="badge badge-info">Username/Password</span>
+            {% else %}
+                <span class="badge badge-secondary">None</span>
+            {% endif %}
+        </div>
+        <div class="status-row">
+            <strong>Connection</strong>
+            {% if broker_connected == 'connected' %}
+                <span class="badge badge-success">Connected</span>
+            {% elif broker_connected == 'disconnected' %}
+                <span class="badge badge-danger">Disconnected</span>
+            {% else %}
+                <span class="badge badge-secondary">Unknown</span>
+            {% endif %}
         </div>
     </div>
     {% else %}
@@ -312,16 +88,6 @@ document.addEventListener('DOMContentLoaded', function() {
         <p>Please configure MQTT settings in the NEMO admin interface.</p>
     </div>
     {% endif %}
-    
-    <div class="messages-header">
-        <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 0.7em;">
-            Latest 50 Events <span style="font-size: 1.2rem; font-weight: 400;">(refreshes every 3s)</span>
-        </h2>
-
-    </div>
-    <div class="terminal-log" id="messages-list"></div>
-    <div class="debug-toggle" id="debug-toggle">▼ Debug</div>
-    <div id="debug-info"><div id="debug-log"></div></div>
 </div>
 {% endblock %}
 

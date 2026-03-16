@@ -3,8 +3,6 @@ Views for MQTT plugin.
 """
 
 from django.shortcuts import render
-from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 
 
@@ -34,36 +32,3 @@ def mqtt_monitor(request):
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
     return response
-
-
-@login_required
-@require_http_methods(["GET"])
-def mqtt_monitor_api(request):
-    """API endpoint: recent messages from queue (what NEMO has published to the pipeline)."""
-    try:
-        from .db_publisher import db_publisher
-
-        messages = db_publisher.get_monitor_messages()
-        broker_connected = db_publisher.get_bridge_status()
-        response_data = {
-            "messages": messages,
-            "count": len(messages),
-            "monitoring": True,
-            "broker_connected": broker_connected,
-        }
-        response = JsonResponse(response_data)
-        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response["Pragma"] = "no-cache"
-        response["Expires"] = "0"
-        return response
-    except Exception as e:
-        return JsonResponse(
-            {
-                "error": str(e),
-                "messages": [],
-                "count": 0,
-                "monitoring": False,
-                "broker_connected": None,
-            },
-            status=500,
-        )

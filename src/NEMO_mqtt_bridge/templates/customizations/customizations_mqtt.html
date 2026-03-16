@@ -22,6 +22,41 @@
                 </div>
             </div>
         </div>
+
+        <div class="customization-separation"></div>
+        <h3 class="customization-section-title">Event Types</h3>
+        <p class="help-block light-grey">
+            Select which NEMO events should be published to MQTT. These filters apply to all tools and areas.
+        </p>
+        <div class="form-group">
+            <label class="control-label col-md-3">Operational Status Events</label>
+            <div class="col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="mqtt_event_tool_operational"
+                               {% if mqtt_event_filters.tool_operational %}checked{% endif %}
+                               value="enabled">
+                        Publish <code>tool_operational</code> events
+                        <span class="help-block light-grey">
+                            Sent when a tool transitions to an operational state (problem cleared).
+                        </span>
+                    </label>
+                </div>
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="mqtt_event_tool_non_operational"
+                               {% if mqtt_event_filters.tool_non_operational %}checked{% endif %}
+                               value="enabled">
+                        Publish <code>tool_non_operational</code> events
+                        <span class="help-block light-grey">
+                            Sent when a tool is marked non-operational (e.g., forced shutdown task).
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
         
         <div class="form-group">
             <label class="control-label col-md-3" for="mqtt_name">Configuration Name</label>
@@ -316,12 +351,6 @@
     {% else %}
         <p class="text-muted">No recent MQTT messages found.</p>
     {% endif %}
-    
-    <div class="text-center" style="margin-top: 15px;">
-        <a href="{% url 'admin:NEMO_mqtt_bridge_mqtteventfilter_changelist' %}" class="btn btn-default">
-            <span class="glyphicon glyphicon-filter"></span> Manage event filters
-        </a>
-    </div>
 </div>
 
 <script>

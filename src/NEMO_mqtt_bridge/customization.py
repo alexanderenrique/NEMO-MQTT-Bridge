@@ -6,7 +6,7 @@ import logging
 
 from NEMO.decorators import customization
 from NEMO.views.customization import CustomizationBase
-from .models import MQTTConfiguration, MQTTMessageLog, MQTTEventFilter
+from .models import MQTTConfiguration, MQTTMessageLog
 
 logger = logging.getLogger(__name__)
 
@@ -91,14 +91,12 @@ class MQTTCustomization(CustomizationBase):
         )
 
         recent_messages = MQTTMessageLog.objects.order_by("-sent_at")[:5]
-        event_filters = MQTTEventFilter.objects.all()
 
         # Add MQTT-specific context data
         context_dict.update(
             {
                 "config": config,
                 "recent_messages": recent_messages,
-                "event_filters": event_filters,
             }
         )
 

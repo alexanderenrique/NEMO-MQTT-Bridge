@@ -19,11 +19,21 @@ This is a Django plugin that publishes NEMO tool usage events to MQTT (tool enab
 └─────────────────┘    └──────────────────┘    └─────────────────────┘    └─────────────┘
 ```
 
-- **Django**: Signal handlers (Tool save, UsageEvent) insert into `MQTTEventQueue` and use `pg_notify` to wake the bridge.
+- **Django**: Signal handlers (Tool save, UsageEvent, Tool operational status) insert into `MQTTEventQueue` and use `pg_notify` to wake the bridge.
 - **Bridge**: Separate process runs `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge`; it LISTENs for notifications, fetches events, and publishes to the MQTT broker with QoS 1.
-- **Topics**: `nemo/tools/{id}/enabled`, `nemo/tools/{id}/disabled`
+- **Topics (usage status)**: `nemo/tools/{id}/enabled`, `nemo/tools/{id}/disabled`
+- **Topics (operational status)**: `nemo/tools/{id}/operational`, `nemo/tools/{id}/non-operational`
 
 Configuration is stored in Django (e.g. `/customization/mqtt/`) and loaded by the bridge on each connection.
+
+### Tool operational vs. down (per-tool status)
+
+In addition to **usage** events (who enabled/disabled the tool), the plugin publishes **operational status** so displays can show when a tool is marked down or back up:
+
+- **`nemo/tools/{id}/operational`** — emitted when the tool becomes operational again (e.g. problem cleared, forced-shutdown task resolved).
+- **`nemo/tools/{id}/non-operational`** — emitted when the tool is marked non-operational (e.g. a task with “force shutdown” is created).
+
+These events use NEMO’s `tool_enabled` / `tool_disabled` signals and are independent of who is currently using the tool. Payloads include `event`, `tool_id`, `tool_name`, `operational` (boolean), and `timestamp` (ISO). See `src/NEMO_mqtt_bridge/monitoring/README.md` for payload examples.
 
 ## Installation
 
@@ -70,17 +80,16 @@ python manage.py migrate NEMO_mqtt_bridge
 
 ### Plugin URLs
 
-The plugin exposes two URLs:
+The plugin exposes one URL:
 
 | URL | Purpose |
 |-----|---------|
-| `/mqtt_monitor/` | Web dashboard: event stream from the queue (last 100 events), auto-refreshes every 3 seconds |
-| `/mqtt_monitor/api/` | JSON API: returns recent events and bridge status for the monitor page |
+| `/mqtt_monitor/` | Web dashboard (event feed disabled) |
 
 **Where to find them** depends on how NEMO loads the plugin:
 
-- **Docker / pip-installed NEMO:** NEMO auto-includes URLs from apps whose names start with `NEMO`. The plugin is mounted at the root, so use **`/mqtt_monitor/`** and **`/mqtt_monitor/api/`**. No manual URL config needed.
-- **Source install with `--write-urls`:** If you add `path("mqtt/", include("NEMO_mqtt_bridge.urls"))` to `NEMO/urls.py`, the URLs are under `/mqtt/`: **`/mqtt/mqtt_monitor/`** and **`/mqtt/mqtt_monitor/api/`**.
+- **Docker / pip-installed NEMO:** NEMO auto-includes URLs from apps whose names start with `NEMO`. The plugin is mounted at the root, so use **`/mqtt_monitor/`**. No manual URL config needed.
+- **Source install with `--write-urls`:** If you add `path("mqtt/", include("NEMO_mqtt_bridge.urls"))` to `NEMO/urls.py`, the URL is under `/mqtt/`: **`/mqtt/mqtt_monitor/`**.
 
 Both paths require login. If you get a 404, check which URL scheme your NEMO uses (auto-include vs manual).
 

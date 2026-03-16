@@ -196,6 +196,8 @@ class MQTTEventFilter(models.Model):
         ("reservation_delete", "Reservation Delete"),
         ("usage_event_save", "Usage Event Save"),
         ("area_access_save", "Area Access Save"),
+        ("tool_operational", "Tool Operational"),
+        ("tool_non_operational", "Tool Non-Operational"),
     ]
 
     event_type = models.CharField(
