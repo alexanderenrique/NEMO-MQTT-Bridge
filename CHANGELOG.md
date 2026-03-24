@@ -2,8 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.1.3] - 2026-03-16
+## [2.1.3] - 2026-03-24
 
+- **PostgreSQL–MQTT bridge queue reliability**: The consumption loop polls `MQTTEventQueue` on a short interval (default 2s) in addition to `LISTEN`/`NOTIFY`, so pending rows are published even when notifications are missed (e.g. poolers in transaction mode, no listener at insert time). Logs at INFO when batch work runs: `Publishing N pending MQTT queue event(s) to broker`.
 - **Tool operational / non-operational MQTT events**: The plugin now publishes per-tool **operational status** messages, distinct from usage (enable/disable).
   - Listens to NEMO’s custom `tool_enabled` and `tool_disabled` signals (emitted when `tool.operational` changes, e.g. when a task forces a shutdown or problems are cleared).
   - **Topics**: `nemo/tools/{id}/operational` when a tool becomes operational again; `nemo/tools/{id}/non-operational` when a tool is marked down.

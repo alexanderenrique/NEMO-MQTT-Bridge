@@ -8,6 +8,10 @@ This bridge:
   2. Connects to the MQTT broker (plugin config)
   3. For each event from the queue, publishes to the broker
 
+LISTEN/NOTIFY can miss events (no listener yet, connection poolers in transaction mode, etc.).
+The consumption loop therefore also polls the queue on an interval so pending rows are drained
+reliably whenever MQTT is connected.
+
 Requires PostgreSQL. Modes:
   - AUTO: Starts embedded MQTT broker (mqttools, pure Python)
   - EXTERNAL: Connects to existing services (production)
@@ -64,6 +68,8 @@ logger = logging.getLogger(__name__)
 NOTIFY_CHANNEL_EVENTS = "nemo_mqtt_events"
 NOTIFY_CHANNEL_RELOAD = "nemo_mqtt_reload"
 BRIDGE_STATUS_REFRESH_INTERVAL = 30
+# Fallback when NOTIFY is unreliable: scan MQTTEventQueue for pending rows.
+QUEUE_POLL_INTERVAL = 2.0
 
 
 def _get_pg_connection_params():
@@ -124,6 +130,7 @@ class PostgresMQTTBridge:
         self._reconnecting_log_interval = 15
         self._mqtt_has_connected_before = False
         self._last_bridge_status_write = 0
+        self._last_queue_poll_time = 0.0
 
         self.mqtt_connection_mgr = None
         self.pg_connection_mgr = ConnectionManager(
@@ -345,6 +352,11 @@ class PostgresMQTTBridge:
                             self._process_pending_events()
                     self.pg_conn.notifies.clear()
 
+                # Do not rely on NOTIFY alone: poolers and timing can drop notifications.
+                if (now - self._last_queue_poll_time) >= QUEUE_POLL_INTERVAL:
+                    self._process_pending_events()
+                    self._last_queue_poll_time = now
+
                 time.sleep(0.01)
             except Exception as e:
                 logger.error("Service loop error: %s", e)
@@ -355,7 +367,15 @@ class PostgresMQTTBridge:
     def _process_pending_events(self):
         """Fetch unprocessed events and publish to MQTT."""
         try:
-            events = MQTTEventQueue.objects.filter(processed=False).order_by("id")
+            events = list(
+                MQTTEventQueue.objects.filter(processed=False).order_by("id")
+            )
+            if not events:
+                return
+            logger.info(
+                "Publishing %s pending MQTT queue event(s) to broker",
+                len(events),
+            )
             for event in events:
                 self._process_event(event)
                 event.processed = True
