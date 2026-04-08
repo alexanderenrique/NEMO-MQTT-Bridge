@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.2] - 2026-04-08
+
+### Opt-in subprocess bridge spawn from Django
+
+- **`NEMO_MQTT_BRIDGE_SPAWN_SUBPROCESS`:** When enabled (`1` / `true` / `yes` / `on` or Django setting), `AppConfig.ready()` starts a **daemon thread** that (after random **jitter** up to `NEMO_MQTT_BRIDGE_SPAWN_JITTER_SEC`, default 1s) acquires a **launcher flock** (`NEMO_mqtt_bridge.launcher.lock`), checks **`bridge_process_running()`** via the bridge lock PID, and if not running spawns a **detached** `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` (`start_new_session=True`). Holds the launcher until the child appears in the bridge lock or **`NEMO_MQTT_BRIDGE_SPAWN_LOCK_WAIT_SEC`** (default 15s). Mutually exclusive with **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO`**: if both are set, logs an error and uses the **in-process thread only**.
+- **`NEMO_MQTT_BRIDGE_SPAWN_USE_SUPERVISOR`:** Spawn **`bridge_supervisor`** instead of the bridge module; passes `--auto` / `--db-health` when matching env flags.
+- **CLI skip:** No spawn during listed `manage.py` subcommands (`migrate`, `test`, `collectstatic`, `shell`, …) or when **`NEMO_MQTT_BRIDGE_SPAWN_SKIP=1`** (tests set this by default in `tests/test_settings.py`).
+- **`process_lock`:** New **`read_bridge_lock_pid()`** and **`bridge_process_running()`** helpers for spawn logic.
+
+## [2.2.1] - 2026-04-08
+
+### Bridge supervisor
+
+- **`bridge_supervisor`:** New module `NEMO_mqtt_bridge.bridge_supervisor` (console script **`nemo-mqtt-bridge-supervisor`**) runs the bridge as a **subprocess**, restarts it on exit with **exponential backoff**, and uses a **supervisor lock** so only one supervisor runs per host. Optional **`--db-health`** / **`NEMO_MQTT_SUPERVISOR_DB_HEALTH=1`** treats a stale **`MQTTBridgeStatus.last_heartbeat`** as a wedged bridge and terminates the child (after **`--startup-grace-sec`**). Env tuning: `NEMO_MQTT_SUPERVISOR_INTERVAL`, `BACKOFF_INITIAL`, `BACKOFF_MAX`, `STALE_SEC`, `GRACE_SEC`, `TERM_WAIT`.
+- **`MQTTBridgeStatus.last_heartbeat`:** New nullable field; the bridge consumption loop updates it every **15s** so supervisors (and humans) can tell the loop is alive. Migration **`0004_mqttbridgestatus_last_heartbeat`**.
+- **`/mqtt_bridge_status/`** JSON now includes **`last_heartbeat`** when present.
+
+### Bridge process lock
+
+- **Lock moved to `start()`:** The bridge acquires the file lock when the service starts, not in `PostgresMQTTBridge.__init__`, so constructing the bridge does not contend for the lock.
+- **Standalone vs embedded:** `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` still **exits** if another live bridge holds the lock (`fatal_if_locked=True`). When the bridge is started from Django via `get_mqtt_bridge()` (`lock_fatal=False`), a worker that cannot acquire the lock **logs a warning and skips** starting the in-process bridge instead of calling `sys.exit`, avoiding Gunicorn worker death loops when `NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=1` with multiple workers.
+- **Signals:** SIGINT/SIGTERM handlers are registered only for the standalone (fatal lock) path after the lock is acquired.
+
+### AUTO cleanup
+
+- **`cleanup_existing_services`:** The previous default `pkill -f postgres_mqtt_bridge` is **disabled by default** so AUTO mode does not kill a legitimate standalone bridge. Opt in for local debugging with **`NEMO_MQTT_BRIDGE_DEV_PKILL=1`** (or `true` / `yes` / `on`).
+
+### Docs
+
+- **README:** Expanded Docker Compose example (`db` + `nemo` + `nemo_mqtt_bridge`), single-replica note, file lock as backup singleton, troubleshooting for worker/bridge cycling.
+
 ## [2.2.0] - 2026-04-08
 
 ### Breaking changes

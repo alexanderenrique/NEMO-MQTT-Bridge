@@ -44,6 +44,12 @@ Saving or deleting MQTT configuration in Django triggers `pg_notify` on `nemo_mq
 
 **Default (2.2.0+):** the bridge **does not** start from Django (`AppConfig.ready`). Run **`python -m NEMO_mqtt_bridge.postgres_mqtt_bridge`** as its own process (systemd, Compose service, etc.). Django still enqueues events and sends **`pg_notify`**; the standalone bridge **LISTEN**s and publishes to MQTT.
 
+For **Docker Compose**, add a **second service** with the same image and DB-related env as NEMO (see the main [README.md](../../../README.md) Docker section). Use **one** bridge service; do **not** scale it to multiple replicas.
+
+For **automatic restart** of the bridge process (exponential backoff; optional DB heartbeat watchdog), use **`python -m NEMO_mqtt_bridge.bridge_supervisor`** or **`nemo-mqtt-bridge-supervisor`** as the container command instead of `postgres_mqtt_bridge`—see the main README supervisor paragraph.
+
+For **opt-in spawn from Django** (single container, detached subprocess, not in Gunicorn workers), see **`NEMO_MQTT_BRIDGE_SPAWN_SUBPROCESS`** in the main [README.md](../../../README.md).
+
 To embed the bridge in the **same process** as Django (single-process dev only; avoid with multiple Gunicorn/Uvicorn workers), set **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=1`** (or `true` / `yes` / `on`) in the environment, or **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO = True`** in Django settings. Use **`0`** / **`false`** / **`no`** / **`off`** to force the standalone-only behavior.
 
 The bridge can start with MQTT disabled and connect when you enable configuration—no Django restart required.
@@ -113,9 +119,11 @@ If you don't see messages:
 
 1. **Check PostgreSQL**: Ensure NEMO uses PostgreSQL (required for LISTEN/NOTIFY)
 2. **Check MQTT broker**: `lsof -i :1883`
-3. **Check bridge service**: `pgrep -f postgres_mqtt_bridge` or `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge`
-4. **Check Django logs** for signal handler errors
+3. **Check bridge service**: `pgrep -f postgres_mqtt_bridge` or `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` (with Compose: `docker compose logs nemo_mqtt_bridge` or your service name)
+4. **Check Django logs** for signal handler errors (bridge logs are on the **bridge process**, not the web workers, unless you embed the bridge in Django)
 5. **Verify MQTT plugin is enabled** in Django settings
+
+If workers cycle or the external bridge drops unexpectedly, see the **Troubleshooting** subsection in the main [README.md](../../../README.md) (`RUN_IN_DJANGO`, `NEMO_MQTT_BRIDGE_DEV_PKILL`).
 
 ## Requirements
 

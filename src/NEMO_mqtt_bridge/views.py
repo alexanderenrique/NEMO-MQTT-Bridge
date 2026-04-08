@@ -40,6 +40,7 @@ def mqtt_bridge_status(request):
     """Return current bridge status from DB as JSON."""
     status = None
     updated_at = None
+    last_heartbeat = None
     try:
         from .models import MQTTBridgeStatus
 
@@ -47,6 +48,14 @@ def mqtt_bridge_status(request):
         if row:
             status = row.status
             updated_at = row.updated_at.isoformat() if row.updated_at else None
+            if row.last_heartbeat:
+                last_heartbeat = row.last_heartbeat.isoformat()
     except Exception:
         pass
-    return JsonResponse({"status": status, "updated_at": updated_at})
+    return JsonResponse(
+        {
+            "status": status,
+            "updated_at": updated_at,
+            "last_heartbeat": last_heartbeat,
+        }
+    )

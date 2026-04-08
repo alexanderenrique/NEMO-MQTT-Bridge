@@ -196,6 +196,11 @@ class MQTTBridgeStatus(models.Model):
             ("disconnected", "Disconnected"),
         ],
     )
+    last_heartbeat = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Set periodically by the bridge while the consumption loop runs; used for optional supervisor health checks",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

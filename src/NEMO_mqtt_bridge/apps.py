@@ -11,6 +11,7 @@ from .lifecycle_log import lifecycle_log_prefix
 logger = logging.getLogger(__name__)
 
 _bridge_atexit_registered = False
+_spawn_thread_started = False
 
 
 def should_run_bridge_in_django() -> bool:
@@ -133,12 +134,24 @@ class MqttPluginConfig(AppConfig):
                 )
 
             if should_run_bridge_in_django():
+                from .bridge_spawn import should_spawn_bridge_subprocess
+
+                if should_spawn_bridge_subprocess():
+                    logger.error(
+                        "%s Both NEMO_MQTT_BRIDGE_RUN_IN_DJANGO and "
+                        "NEMO_MQTT_BRIDGE_SPAWN_SUBPROCESS are enabled; using "
+                        "in-process bridge only (disable one of them)",
+                        lifecycle_log_prefix(),
+                    )
                 self._start_external_mqtt_service()
+            elif self._should_start_spawn_bridge_thread():
+                self._start_bridge_subprocess_spawn_thread()
             else:
                 logger.info(
                     "%s NEMO_MQTT_BRIDGE_RUN_IN_DJANGO is disabled; start the "
                     "bridge separately (e.g. python -m "
-                    "NEMO_mqtt_bridge.postgres_mqtt_bridge)",
+                    "NEMO_mqtt_bridge.postgres_mqtt_bridge) or set "
+                    "NEMO_MQTT_BRIDGE_SPAWN_SUBPROCESS=1 to auto-spawn",
                     lifecycle_log_prefix(),
                 )
 
@@ -210,6 +223,44 @@ class MqttPluginConfig(AppConfig):
                 "process/thread is not running",
                 lifecycle_log_prefix(),
             )
+
+    def _should_start_spawn_bridge_thread(self) -> bool:
+        global _spawn_thread_started
+        from .bridge_spawn import should_skip_spawn_for_cli, should_spawn_bridge_subprocess
+
+        if not should_spawn_bridge_subprocess():
+            return False
+        if should_skip_spawn_for_cli():
+            logger.info(
+                "%s Skipping bridge subprocess spawn (management command or "
+                "NEMO_MQTT_BRIDGE_SPAWN_SKIP)",
+                lifecycle_log_prefix(),
+            )
+            return False
+        if _spawn_thread_started:
+            return False
+        _spawn_thread_started = True
+        return True
+
+    def _start_bridge_subprocess_spawn_thread(self):
+        from .bridge_spawn import spawn_bridge_subprocess_if_needed
+
+        def _run():
+            try:
+                spawn_bridge_subprocess_if_needed()
+            except Exception as e:
+                logger.error(
+                    "%s Bridge subprocess spawn thread error: %s",
+                    lifecycle_log_prefix(),
+                    e,
+                )
+
+        t = threading.Thread(target=_run, daemon=True, name="mqtt_bridge_spawn")
+        t.start()
+        logger.info(
+            "%s Bridge subprocess spawn thread started (NEMO_MQTT_BRIDGE_SPAWN_SUBPROCESS)",
+            lifecycle_log_prefix(),
+        )
 
     def get_migration_args(self):
         """CLI args for migrate, makemigrations, showmigrations, etc."""

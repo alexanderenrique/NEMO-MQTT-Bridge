@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nemo-mqtt-bridge"
-version = "2.2.0"
+version = "2.2.2"
 description = "MQTT integration plugin for NEMO tool usage events"
 readme = "README.md"
 license = "MIT"
@@ -63,6 +63,9 @@ test = [
     "pytest-django>=4.0",
     "pytest-cov>=3.0",
 ]
+
+[project.scripts]
+nemo-mqtt-bridge-supervisor = "NEMO_mqtt_bridge.bridge_supervisor:main"
 
 [project.urls]
 Homepage = "https://github.com/alexanderenrique/NEMO-MQTT-Plugin"

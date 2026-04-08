@@ -6,6 +6,7 @@ event queue; no Redis needed.
 """
 
 import logging
+import os
 import subprocess
 import time
 from typing import Any, Optional
@@ -16,12 +17,25 @@ logger = logging.getLogger(__name__)
 
 
 def cleanup_existing_services(redis_process=None):
-    """Clean up any existing bridge instances.
-    redis_process is ignored (kept for API compatibility)."""
+    """
+    Optional dev-only cleanup (legacy).
+
+    By default does nothing. Singleton bridge instances are enforced via the file lock
+    in process_lock; ``pkill -f postgres_mqtt_bridge`` is unsafe when a legitimate
+    standalone bridge runs alongside AUTO mode.
+
+    Set environment ``NEMO_MQTT_BRIDGE_DEV_PKILL`` to ``1``/``true``/``yes``/``on``
+    to restore the old ``pkill`` behavior for local troubleshooting.
+
+    redis_process is ignored (kept for API compatibility).
+    """
+    env_val = os.environ.get("NEMO_MQTT_BRIDGE_DEV_PKILL", "").strip().lower()
+    if env_val not in ("1", "true", "yes", "on"):
+        return
     try:
         subprocess.run(["pkill", "-f", "postgres_mqtt_bridge"], capture_output=True)
         time.sleep(2)
-        logger.info("Cleaned up existing services")
+        logger.info("Cleaned up existing services (NEMO_MQTT_BRIDGE_DEV_PKILL)")
     except Exception as e:
         logger.warning("Cleanup warning: %s", e)
 

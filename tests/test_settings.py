@@ -116,3 +116,6 @@ LOGGING = {
 
 # Test-specific settings
 TEST_RUNNER = 'django.test.runner.DiscoverRunner'
+
+# Prevent opt-in subprocess bridge spawn during pytest/Django test runs unless overridden.
+os.environ.setdefault("NEMO_MQTT_BRIDGE_SPAWN_SKIP", "1")

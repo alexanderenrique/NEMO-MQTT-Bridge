@@ -78,6 +78,8 @@ NOTIFY_CHANNEL_RELOAD = "nemo_mqtt_reload"
 BRIDGE_STATUS_REFRESH_INTERVAL = 30
 # Fallback when NOTIFY is unreliable: scan MQTTEventQueue for pending rows.
 QUEUE_POLL_INTERVAL = 2.0
+# Written from the consumption loop so an optional supervisor can detect a wedged process.
+BRIDGE_HEARTBEAT_INTERVAL = 15.0
 
 
 def _get_pg_connection_params():
@@ -111,6 +113,21 @@ def _write_bridge_status(status: str):
         logger.debug("Could not write bridge status: %s", e)
 
 
+def _touch_bridge_heartbeat():
+    """Bump last_heartbeat without changing connection status (supervisor / ops visibility)."""
+    try:
+        from django.utils import timezone
+
+        now = timezone.now()
+        obj, _ = MQTTBridgeStatus.objects.get_or_create(
+            key="default",
+            defaults={"status": "disconnected"},
+        )
+        MQTTBridgeStatus.objects.filter(pk=obj.pk).update(last_heartbeat=now)
+    except Exception as e:
+        logger.debug("Could not write bridge heartbeat: %s", e)
+
+
 def read_mqtt_config_fingerprint():
     """
     Return (id, updated_at) for the enabled MQTT configuration row, or None if none.
@@ -133,8 +150,10 @@ def mqtt_config_reload_needed(stored_fingerprint, current_fingerprint) -> bool:
 class PostgresMQTTBridge:
     """Bridges PostgreSQL queue events to MQTT broker."""
 
-    def __init__(self, auto_start: bool = False):
+    def __init__(self, auto_start: bool = False, lock_fatal: bool = True):
         self.auto_start = auto_start
+        self._lock_fatal = lock_fatal
+        self._bridge_signals_registered = False
         self.mqtt_client = None
         self.pg_conn = None
         self.running = False
@@ -161,6 +180,7 @@ class PostgresMQTTBridge:
         # Last (id, updated_at) successfully applied to the MQTT client (None = no enabled row).
         self._mqtt_config_fingerprint = None
         self._bridge_stop_done = False
+        self._last_heartbeat_monotonic = 0.0
 
         self.mqtt_connection_mgr = None
         self.pg_connection_mgr = ConnectionManager(
@@ -171,10 +191,6 @@ class PostgresMQTTBridge:
             success_threshold=3,
             timeout=60,
         )
-
-        self.lock_file = acquire_lock()
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, signum, frame):
         logger.info(
@@ -188,6 +204,15 @@ class PostgresMQTTBridge:
     def start(self):
         """Start the bridge service (PostgreSQL listener always; MQTT when config enabled)."""
         self._bridge_stop_done = False
+        if self.lock_file is None:
+            lf = acquire_lock(fatal_if_locked=self._lock_fatal)
+            if lf is None:
+                return False
+            self.lock_file = lf
+            if self._lock_fatal and not self._bridge_signals_registered:
+                signal.signal(signal.SIGINT, self._signal_handler)
+                signal.signal(signal.SIGTERM, self._signal_handler)
+                self._bridge_signals_registered = True
         try:
             mode = "AUTO" if self.auto_start else "EXTERNAL"
             logger.info(
@@ -233,6 +258,22 @@ class PostgresMQTTBridge:
             return True
         except Exception as e:
             logger.error("Failed to start bridge: %s", e)
+            self.running = False
+            if self.mqtt_client:
+                try:
+                    self.mqtt_client.loop_stop()
+                    self.mqtt_client.disconnect()
+                except Exception:
+                    pass
+                self.mqtt_client = None
+            if self.pg_conn:
+                try:
+                    self.pg_conn.close()
+                except Exception:
+                    pass
+                self.pg_conn = None
+            release_lock(self.lock_file)
+            self.lock_file = None
             return False
 
     def _initialize_pg(self):
@@ -483,6 +524,13 @@ class PostgresMQTTBridge:
                 close_old_connections()
 
                 now = time.time()
+                now_m = time.monotonic()
+                if (
+                    now_m - self._last_heartbeat_monotonic
+                ) >= BRIDGE_HEARTBEAT_INTERVAL:
+                    _touch_bridge_heartbeat()
+                    self._last_heartbeat_monotonic = now_m
+
                 queue_poll_due = (
                     now - self._last_queue_poll_time
                 ) >= QUEUE_POLL_INTERVAL
@@ -658,7 +706,9 @@ def get_mqtt_bridge():
     with _mqtt_bridge_lock:
         if _mqtt_bridge_instance is None:
             auto_start = _should_auto_start_mosquitto()
-            _mqtt_bridge_instance = PostgresMQTTBridge(auto_start=auto_start)
+            _mqtt_bridge_instance = PostgresMQTTBridge(
+                auto_start=auto_start, lock_fatal=False
+            )
         return _mqtt_bridge_instance
 
 

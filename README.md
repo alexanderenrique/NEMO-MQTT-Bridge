@@ -79,28 +79,53 @@ python manage.py migrate NEMO_mqtt_bridge
 
 **Bridge in Django vs separate process:** Django **writes to `MQTTEventQueue` and uses `pg_notify`** (via the DB publisher); it does not need a long-lived MQTT connection in the web workers. The **standalone bridge process** `LISTEN`s, drains the queue, and publishes to MQTT. **Default:** the bridge is **not** started inside Django. Set **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=1`** (or `true` / `yes` / `on`) in the environment, or **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO = True`** in Django settings, to embed the bridge in-process (dev/simple installs). Set **`0`** / **`false`** / **`no`** / **`off`** to force off. The bridge can idle without an enabled MQTT config and pick up settings when you enable them, without restarting Django.
 
-**Docker:** Use the **same image and env** as the web app for a **second service** that runs only the bridge, for example:
+| Scenario | How to run the bridge | Notes |
+|----------|------------------------|--------|
+| Local dev, single `runserver` | `NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=1` | Bridge thread inside the web process; avoid with Gunicorn/Uvicorn and multiple workers. |
+| Single container, no extra Compose/systemd service | `NEMO_MQTT_BRIDGE_SPAWN_SUBPROCESS=1` and **`RUN_IN_DJANGO` off** | One worker typically spawns a detached subprocess (launcher lock + jitter). Optional: `NEMO_MQTT_BRIDGE_SPAWN_USE_SUPERVISOR=1` for auto-restart. |
+| Production, Docker, or multi-worker web | **Separate** process or container | e.g. `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` or a dedicated Compose service (recommended). |
+| Auto-restart and optional DB heartbeat watchdog | **Supervisor** as the bridge entrypoint | `python -m NEMO_mqtt_bridge.bridge_supervisor` or `nemo-mqtt-bridge-supervisor`; do not run supervisor and a plain bridge service for the same module on one host. |
+
+**Single container / auto-spawn (opt-in):** Set **`NEMO_MQTT_BRIDGE_SPAWN_SUBPROCESS=1`** and keep **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=0`**. On startup, each Gunicorn worker schedules a short background task with **random jitter** and a **launcher file lock** so typically **one** worker starts a **detached** bridge subprocess; others see the bridge lock PID and skip. Do **not** enable spawn and **`RUN_IN_DJANGO`** together (the plugin logs an error and keeps in-process mode only). Spawning is skipped for **`manage.py migrate`**, **`test`**, **`shell`**, etc., and when **`NEMO_MQTT_BRIDGE_SPAWN_SKIP=1`**. Optional: **`NEMO_MQTT_BRIDGE_SPAWN_USE_SUPERVISOR=1`**, **`NEMO_MQTT_BRIDGE_SPAWN_JITTER_SEC`**, **`NEMO_MQTT_BRIDGE_SPAWN_LOCK_WAIT_SEC`**. **Horizontally scaled** deployments (many app replicas) can run **one bridge per replica filesystem**—you may get **duplicate MQTT publishes**; prefer a **dedicated bridge service** or a single replica if that matters.
+
+**Docker:** Use the **same image** as the web app for a **second Compose service** that runs only the bridge so `docker compose up` starts NEMO and the bridge together. Mirror **database-related environment** (and `DJANGO_SETTINGS_MODULE`) so the bridge loads the same Django settings and can reach Postgres.
 
 ```yaml
 services:
+  db:
+    image: postgres:15
+    # ... your Postgres config ...
+
   nemo:
     image: your-nemo-image
     environment:
       DJANGO_SETTINGS_MODULE: settings
-      # Optional explicit off (default since 2.2.0):
+      # Do not embed the bridge in Gunicorn workers (default since 2.2.0):
       NEMO_MQTT_BRIDGE_RUN_IN_DJANGO: "0"
     command: ["gunicorn", "..."]
+    depends_on:
+      - db
 
   nemo_mqtt_bridge:
     image: your-nemo-image
     environment:
       DJANGO_SETTINGS_MODULE: settings
+      NEMO_MQTT_BRIDGE_RUN_IN_DJANGO: "0"
     command: ["python", "-m", "NEMO_mqtt_bridge.postgres_mqtt_bridge"]
     depends_on:
-      - nemo
+      - db
 ```
 
-Adjust service names, `depends_on`, and database/network settings to match your stack. You can run in AUTO mode with the embedded broker (mqttools) or set `NEMO_MQTT_BRIDGE_AUTO_START=0` and point MQTT customization at an external broker (e.g. `broker_host=mqtt` for a Compose service named `mqtt`).
+The bridge only needs **Postgres + settings** (not HTTP); `depends_on: [nemo]` is optional if you want start ordering. **Run exactly one** bridge replica: do not use `docker compose up --scale nemo_mqtt_bridge=2`. A **file lock** in the container still enforces a single bridge process per host if something starts a duplicate by mistake.
+
+Adjust image names, env (secrets, `DATABASE_URL` / Django DB vars), and networks to match your stack. For production with an external MQTT broker, set `NEMO_MQTT_BRIDGE_AUTO_START=0` and point MQTT customization at that broker (e.g. `broker_host=mqtt` for a Compose service named `mqtt`). For local-style AUTO mode, the embedded broker (mqttools) can run inside the bridge container.
+
+**Supervisor (auto-restart):** To restart the bridge automatically when the process exits (and optionally when the DB heartbeat goes stale), run **`python -m NEMO_mqtt_bridge.bridge_supervisor`** or the **`nemo-mqtt-bridge-supervisor`** console script instead of invoking `postgres_mqtt_bridge` directly. Use **`--db-health`** (or **`NEMO_MQTT_SUPERVISOR_DB_HEALTH=1`**) only when `DJANGO_SETTINGS_MODULE` and DB access match the bridge; tune intervals via `NEMO_MQTT_SUPERVISOR_INTERVAL`, `NEMO_MQTT_SUPERVISOR_STALE_SEC`, `NEMO_MQTT_SUPERVISOR_GRACE_SEC`, etc. Do **not** run both a plain bridge service and a supervisor that spawns the same module on the same host—they compete for the bridge lock. After upgrading, run **`python manage.py migrate NEMO_mqtt_bridge`** so `last_heartbeat` exists.
+
+### Troubleshooting (cyclic bridge / workers)
+
+- **Gunicorn workers restarting or “multiple bridges”:** Ensure **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=0`** (or unset with no `True` in settings). Embedding the bridge with **multiple workers** causes lock contention; since 2.2.1, extra workers **skip** starting the in-process bridge instead of exiting, but you should still run **one standalone bridge** and keep Django out of the bridge entirely.
+- **Standalone bridge dies when something uses AUTO mode:** Older builds ran `pkill -f postgres_mqtt_bridge` during AUTO cleanup. That is now **disabled by default**; enable only for local debugging with **`NEMO_MQTT_BRIDGE_DEV_PKILL=1`**.
 
 ### Plugin URLs
 
