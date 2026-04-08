@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - **Immediate MQTT reconnect after config save**: `MQTTConfiguration` changes now trigger the bridge reload notification on DB transaction commit (`transaction.on_commit()`), so the bridge begins reconnecting as soon as the configuration is actually saved (instead of waiting for a longer surrounding transaction to finish).
 - **Faster bridge status updates in the UI**: Added a `/mqtt_bridge_status/` JSON endpoint and 2-second polling on the monitor page and MQTT customization page so “Connected / Disconnected” reflects the real bridge state quickly without manual refresh.
+- **Customization page debug toggle + diagnostics snapshot**: The MQTT customization page now includes a “Show debug details” checkbox that reveals recent queue rows and message history on demand, plus a copy/paste friendly diagnostics snapshot (bridge status/updated time + safe MQTT config + queue metadata + plugin version) for troubleshooting in environments without backend log/SSH access.
 
 ## [2.1.4] - 2026-04-07
 

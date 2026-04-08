@@ -74,6 +74,11 @@ class MQTTCustomization(CustomizationBase):
         # Get the base context from parent class
         context_dict = super().context()
 
+        try:
+            from . import __version__ as plugin_version
+        except Exception:
+            plugin_version = None
+
         # Get the single MQTT configuration (create one if none exists)
         import os
         import socket
@@ -102,6 +107,18 @@ class MQTTCustomization(CustomizationBase):
 
         recent_messages = MQTTMessageLog.objects.order_by("-sent_at")[:5]
         pending_queue_count = MQTTEventQueue.objects.filter(processed=False).count()
+        pending_queue_oldest = (
+            MQTTEventQueue.objects.filter(processed=False)
+            .order_by("created_at")
+            .values_list("created_at", flat=True)
+            .first()
+        )
+        pending_queue_newest = (
+            MQTTEventQueue.objects.filter(processed=False)
+            .order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
+        )
         recent_queue_events = (
             MQTTEventQueue.objects.order_by("-id").values(
                 "id", "topic", "qos", "retain", "processed", "created_at"
@@ -134,7 +151,10 @@ class MQTTCustomization(CustomizationBase):
                 "mqtt_event_filters": mqtt_event_filters,
                 "bridge_status": bridge_status,
                 "pending_queue_count": pending_queue_count,
+                "pending_queue_oldest": pending_queue_oldest,
+                "pending_queue_newest": pending_queue_newest,
                 "recent_queue_events": list(recent_queue_events),
+                "plugin_version": plugin_version,
             }
         )
 
