@@ -1,6 +1,8 @@
 """Tests for bridge process lock (singleton / Gunicorn-safe embedded mode)."""
 
+import builtins
 import errno
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -44,16 +46,20 @@ def test_acquire_lock_fatal_exits_when_holder_alive(tmp_path, monkeypatch):
 
 
 def test_acquire_lock_retry_succeeds_after_first_flock_fails(tmp_path, monkeypatch):
-    monkeypatch.setattr(pl, "LOCK_PATH", str(tmp_path / "bridge.lock"))
+    lock_path = str(tmp_path / "bridge.lock")
+    monkeypatch.setattr(pl, "LOCK_PATH", lock_path)
 
     mock_file = MagicMock()
     mock_file.fileno.return_value = 7
 
     n = {"flock": 0, "opens": 0}
+    real_open = builtins.open
 
     def fake_open(path, mode="r", *a, **kw):
-        n["opens"] += 1
-        return mock_file
+        if os.fspath(path) == lock_path and "w" in mode:
+            n["opens"] += 1
+            return mock_file
+        return real_open(path, mode, *a, **kw)
 
     def flock_side_effect(fd, op):
         n["flock"] += 1
@@ -62,7 +68,8 @@ def test_acquire_lock_retry_succeeds_after_first_flock_fails(tmp_path, monkeypat
         return None
 
     monkeypatch.setattr(pl.fcntl, "flock", flock_side_effect)
-    monkeypatch.setattr("builtins.open", fake_open)
+    monkeypatch.setattr(builtins, "open", fake_open)
+    monkeypatch.setattr(pl.os, "fsync", lambda _fd: None)
 
     result = pl.acquire_lock(fatal_if_locked=True)
     assert result is mock_file
