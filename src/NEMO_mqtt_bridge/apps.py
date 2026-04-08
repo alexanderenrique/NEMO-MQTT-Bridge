@@ -1,10 +1,45 @@
-from django.apps import AppConfig
-from django.conf import settings
+import atexit
 import logging
+import os
 import threading
 import time
 
+from django.apps import AppConfig
+
 logger = logging.getLogger(__name__)
+
+_bridge_atexit_registered = False
+
+
+def should_run_bridge_in_django() -> bool:
+    """
+    When False, Django does not spawn the bridge thread; run
+    python -m NEMO_mqtt_bridge.postgres_mqtt_bridge (or systemd) separately.
+    Env NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=0 or Django setting NEMO_MQTT_BRIDGE_RUN_IN_DJANGO = False.
+    Default True for backward compatibility.
+    """
+    env_val = os.environ.get("NEMO_MQTT_BRIDGE_RUN_IN_DJANGO", "").strip().lower()
+    if env_val in ("0", "false", "no", "off"):
+        return False
+    try:
+        from django.conf import settings
+
+        if hasattr(settings, "NEMO_MQTT_BRIDGE_RUN_IN_DJANGO"):
+            return bool(settings.NEMO_MQTT_BRIDGE_RUN_IN_DJANGO)
+    except Exception:
+        pass
+    return True
+
+
+def _atexit_stop_mqtt_bridge():
+    try:
+        from .postgres_mqtt_bridge import get_mqtt_bridge
+
+        bridge = get_mqtt_bridge()
+        if bridge.running:
+            bridge.stop()
+    except Exception:
+        pass
 
 
 class MqttPluginConfig(AppConfig):
@@ -54,73 +89,74 @@ class MqttPluginConfig(AppConfig):
         self._initialized = True
         logger.info("MQTT plugin initialization started")
 
-        # Initialize DB publisher for MQTT events
+        # Initialize DB publisher for MQTT events; start bridge when configured to run in-process
         try:
             from .utils import get_mqtt_config
-            from .signals import signal_handler
 
             config = get_mqtt_config()
-            logger.info(f"MQTT config result: {config}")
+            logger.info("MQTT config result: %s", config)
             if config and config.enabled:
                 logger.info(
-                    f"MQTT plugin initialized successfully with config: {config.name}"
+                    "MQTT plugin initialized with enabled config: %s",
+                    config.name,
                 )
                 logger.info("MQTT events will be published via PostgreSQL to MQTT broker")
+            else:
+                logger.info(
+                    "MQTT plugin loaded without enabled configuration; "
+                    "bridge will idle until MQTT is enabled in customization"
+                )
 
-                # Start the PostgreSQL-MQTT Bridge service automatically
+            if should_run_bridge_in_django():
                 self._start_external_mqtt_service()
             else:
-                logger.info("MQTT plugin loaded but no enabled configuration found")
-                # Force start the bridge anyway for development
-                logger.info("Starting PostgreSQL-MQTT Bridge anyway for development...")
-                self._start_external_mqtt_service()
+                logger.info(
+                    "NEMO_MQTT_BRIDGE_RUN_IN_DJANGO is disabled; start the bridge separately "
+                    "(e.g. python -m NEMO_mqtt_bridge.postgres_mqtt_bridge)"
+                )
 
         except Exception as e:
-            logger.error(f"Failed to initialize MQTT plugin: {e}")
+            logger.error("Failed to initialize MQTT plugin: %s", e)
 
         logger.info(
             "MQTT plugin: Signal handlers and customization registered. Events will be published via PostgreSQL."
         )
 
     def _start_external_mqtt_service(self):
-        """Start the PostgreSQL-MQTT Bridge service automatically"""
-        # Prevent multiple service starts
+        """Start the PostgreSQL-MQTT Bridge service in a daemon thread."""
+        global _bridge_atexit_registered
         if self._auto_service_started:
             logger.info("PostgreSQL-MQTT Bridge already started, skipping...")
             return
 
         try:
-            logger.info("Starting PostgreSQL-MQTT Bridge service automatically...")
+            logger.info("Starting PostgreSQL-MQTT Bridge service in-process...")
 
-            # Import and get the singleton bridge instance
             from .postgres_mqtt_bridge import get_mqtt_bridge
 
             mqtt_bridge = get_mqtt_bridge()
 
-            # Start the service in a separate thread
             def run_bridge_service():
                 try:
                     mqtt_bridge.start()
-
-                    # Keep the service running
                     while mqtt_bridge.running:
                         time.sleep(1)
-
                 except Exception as e:
-                    logger.error(f"PostgreSQL-MQTT Bridge error: {e}")
+                    logger.error("PostgreSQL-MQTT Bridge error: %s", e)
 
-            # Start the service in a daemon thread
             mqtt_thread = threading.Thread(target=run_bridge_service, daemon=True)
             mqtt_thread.start()
 
-            # Mark as started
             self._auto_service_started = True
-            logger.info("PostgreSQL-MQTT Bridge started successfully")
+            if not _bridge_atexit_registered:
+                atexit.register(_atexit_stop_mqtt_bridge)
+                _bridge_atexit_registered = True
+            logger.info("PostgreSQL-MQTT Bridge thread started")
 
         except Exception as e:
-            logger.error(f"Failed to start PostgreSQL-MQTT Bridge: {e}")
+            logger.error("Failed to start PostgreSQL-MQTT Bridge: %s", e)
             logger.info(
-                "MQTT events will still be published to queue, but bridge service is not running"
+                "MQTT events will still be enqueued, but the bridge process/thread is not running"
             )
 
     def get_migration_args(self):
@@ -134,7 +170,13 @@ class MqttPluginConfig(AppConfig):
         ]
 
     def disconnect_mqtt(self):
-        """Disconnect MQTT client when app is shutting down"""
-        if hasattr(self, "mqtt_client") and self.mqtt_client:
-            self.mqtt_client.disconnect()
-            logger.info("MQTT client disconnected during app shutdown")
+        """Stop the in-process bridge (releases lock, disconnects MQTT and PostgreSQL)."""
+        try:
+            from .postgres_mqtt_bridge import get_mqtt_bridge
+
+            bridge = get_mqtt_bridge()
+            if bridge.running:
+                bridge.stop()
+                logger.info("PostgreSQL-MQTT Bridge stopped")
+        except Exception as e:
+            logger.debug("disconnect_mqtt: %s", e)

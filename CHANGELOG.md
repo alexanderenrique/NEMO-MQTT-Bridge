@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.4] - 2026-04-07
+
+- **Reliable MQTT config reload**: The PostgreSQL–MQTT bridge reapplies broker settings when `MQTTConfiguration` changes, not only via `LISTEN nemo_mqtt_reload`. On the same interval as the event queue poll (default 2s), it compares the enabled row’s `(id, updated_at)` to the last successful connection; if different, it reloads from the database, reconnects (or disconnects if disabled), and drains `MQTTEventQueue` once. This matches the queue’s NOTIFY+polling pattern and fixes missed reload notifications (e.g. connection poolers). `MQTTConfiguration` **delete** now also sends `nemo_mqtt_reload` (previously only the Django cache was cleared).
+- - **Bridge lifecycle without restart**: The PostgreSQL–MQTT bridge always starts PostgreSQL `LISTEN` and the worker thread even when no MQTT configuration is enabled. It idles until settings are enabled, then connects (and starts the embedded broker in AUTO mode if needed) via the existing config fingerprint / reload path.
+- **Queue durability**: Rows in `MQTTEventQueue` are marked `processed` only after a successful MQTT publish; failures leave the row pending for retry (batch stops at the first failure to preserve order). Invalid rows (missing topic or payload) are still marked processed without publishing.
+- **PostgreSQL listener recovery**: If `poll()` on the listener connection fails, the connection is dropped and re-established on the next loop iteration (avoids wedging after DB/network blips).
+- **Django ORM in the bridge thread**: Each consumption-loop iteration calls `django.db.close_old_connections()` to avoid stale database connections.
+- **In-process bridge toggle**: Set environment variable `NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=0` or Django setting `NEMO_MQTT_BRIDGE_RUN_IN_DJANGO = False` to skip spawning the bridge from `AppConfig.ready()` (run `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` separately). Default remains enabled for backward compatibility.
+- **Shutdown**: `atexit` stops the in-process bridge on interpreter exit; `MqttPluginConfig.disconnect_mqtt()` now calls `get_mqtt_bridge().stop()`. `stop()` is idempotent (safe if called twice).
+
 ## [2.1.3] - 2026-03-24
 
 - **PostgreSQL–MQTT bridge queue reliability**: The consumption loop polls `MQTTEventQueue` on a short interval (default 2s) in addition to `LISTEN`/`NOTIFY`, so pending rows are published even when notifications are missed (e.g. poolers in transaction mode, no listener at insert time). Logs at INFO when batch work runs: `Publishing N pending MQTT queue event(s) to broker`.

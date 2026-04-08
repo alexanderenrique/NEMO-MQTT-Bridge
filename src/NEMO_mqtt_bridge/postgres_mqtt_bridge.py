@@ -12,9 +12,16 @@ LISTEN/NOTIFY can miss events (no listener yet, connection poolers in transactio
 The consumption loop therefore also polls the queue on an interval so pending rows are drained
 reliably whenever MQTT is connected.
 
+Config reload uses NOTIFY (nemo_mqtt_reload) and the same polling idea: the enabled row's
+(id, updated_at) fingerprint is checked on the queue poll interval so broker settings apply
+even when NOTIFY is missed.
+
 Requires PostgreSQL. Modes:
   - AUTO: Starts embedded MQTT broker (mqttools, pure Python)
   - EXTERNAL: Connects to existing services (production)
+
+The bridge thread calls django.db.close_old_connections() each loop iteration because it
+uses the ORM outside Django's per-request lifecycle.
 """
 import json
 import logging
@@ -23,7 +30,6 @@ import signal
 import sys
 import threading
 import time
-
 import paho.mqtt.client as mqtt
 
 if __name__ == "__main__":
@@ -103,6 +109,25 @@ def _write_bridge_status(status: str):
         logger.debug("Could not write bridge status: %s", e)
 
 
+def read_mqtt_config_fingerprint():
+    """
+    Return (id, updated_at) for the enabled MQTT configuration row, or None if none.
+    Used to detect DB config changes when NOTIFY is unreliable.
+    """
+    try:
+        return MQTTConfiguration.objects.filter(enabled=True).values_list(
+            "id", "updated_at"
+        ).first()
+    except Exception as e:
+        logger.debug("read_mqtt_config_fingerprint: %s", e)
+        return None
+
+
+def mqtt_config_reload_needed(stored_fingerprint, current_fingerprint) -> bool:
+    """True if the bridge should reload MQTT from the database."""
+    return stored_fingerprint != current_fingerprint
+
+
 class PostgresMQTTBridge:
     """Bridges PostgreSQL queue events to MQTT broker."""
 
@@ -131,6 +156,9 @@ class PostgresMQTTBridge:
         self._mqtt_has_connected_before = False
         self._last_bridge_status_write = 0
         self._last_queue_poll_time = 0.0
+        # Last (id, updated_at) successfully applied to the MQTT client (None = no enabled row).
+        self._mqtt_config_fingerprint = None
+        self._bridge_stop_done = False
 
         self.mqtt_connection_mgr = None
         self.pg_connection_mgr = ConnectionManager(
@@ -152,22 +180,36 @@ class PostgresMQTTBridge:
         sys.exit(0)
 
     def start(self):
-        """Start the bridge service."""
+        """Start the bridge service (PostgreSQL listener always; MQTT when config enabled)."""
+        self._bridge_stop_done = False
         try:
             mode = "AUTO" if self.auto_start else "EXTERNAL"
             logger.info("Starting PostgreSQL-MQTT Bridge (%s mode)", mode)
 
-            self.config = get_mqtt_config()
-            if not self.config or not self.config.enabled:
-                logger.error("No enabled MQTT configuration found")
-                return False
+            self._initialize_pg()
 
-            if self.auto_start:
+            self.config = get_mqtt_config()
+            has_enabled = bool(self.config and self.config.enabled)
+
+            if has_enabled and self.auto_start:
                 cleanup_existing_services(None)
                 self.mosquitto_process = start_mosquitto(self.config)
+            elif not has_enabled:
+                logger.info(
+                    "No enabled MQTT configuration; bridge will idle until config is enabled"
+                )
+                self.config = None
 
-            self._initialize_pg()
-            self._initialize_mqtt()
+            if has_enabled:
+                try:
+                    self._initialize_mqtt()
+                except Exception as e:
+                    logger.error("Initial MQTT connection failed: %s", e)
+                    self._disconnect_mqtt_client()
+            else:
+                self._disconnect_mqtt_client()
+
+            self._mqtt_config_fingerprint = read_mqtt_config_fingerprint()
 
             self.running = True
             self.thread = threading.Thread(target=self._run, daemon=True)
@@ -194,6 +236,37 @@ class PostgresMQTTBridge:
         self.pg_conn.cursor().execute(f"LISTEN {NOTIFY_CHANNEL_EVENTS}")
         self.pg_conn.cursor().execute(f"LISTEN {NOTIFY_CHANNEL_RELOAD}")
         logger.info("Connected to PostgreSQL, listening for events")
+
+    def _reconnect_pg_listener(self):
+        """Close and recreate the LISTEN connection after errors or disconnect."""
+        if self.pg_conn is not None:
+            try:
+                self.pg_conn.close()
+            except Exception as e:
+                logger.debug("Closing PostgreSQL listener: %s", e)
+            self.pg_conn = None
+        self._initialize_pg()
+
+    def _poll_pg_notifications(self):
+        """Consume NOTIFY payloads; reconnect the listener if poll fails."""
+        try:
+            if self.pg_conn is None or self.pg_conn.closed:
+                self._reconnect_pg_listener()
+            self.pg_conn.poll()
+            for notify in self.pg_conn.notifies:
+                if notify.channel == NOTIFY_CHANNEL_RELOAD:
+                    self._reload_mqtt_config_and_reconnect(reason="notify")
+                elif notify.channel == NOTIFY_CHANNEL_EVENTS:
+                    self._process_pending_events()
+            self.pg_conn.notifies.clear()
+        except Exception as e:
+            logger.warning("PostgreSQL listener error: %s", e)
+            if self.pg_conn is not None:
+                try:
+                    self.pg_conn.close()
+                except Exception:
+                    pass
+                self.pg_conn = None
 
     def _initialize_mqtt(self):
         if self.mqtt_client is not None:
@@ -309,53 +382,111 @@ class PostgresMQTTBridge:
                 self._last_reconnect_fail_msg = msg
             return False
 
+    def _disconnect_mqtt_client(self):
+        """Stop the MQTT client without loading new config."""
+        if self.mqtt_client is not None:
+            try:
+                self.mqtt_client.loop_stop()
+                self.mqtt_client.disconnect()
+            except Exception as e:
+                logger.debug("MQTT disconnect: %s", e)
+            self.mqtt_client = None
+
+    def _reload_mqtt_config_and_reconnect(self, reason="unknown"):
+        """
+        Load MQTT settings from DB, reconnect or disconnect, drain queue on success.
+        Updates self._mqtt_config_fingerprint only after a successful apply (including
+        disabled/no-config: disconnect and idle).
+        """
+        logger.info("MQTT config reload (%s), reconnecting to broker", reason)
+        try:
+            from django.core.cache import cache
+
+            cache.delete("mqtt_active_config")
+        except Exception as e:
+            logger.debug("Could not clear config cache: %s", e)
+
+        self.config = get_mqtt_config(force_refresh=True)
+
+        if not self.config or not self.config.enabled:
+            self._disconnect_mqtt_client()
+            if self.auto_start and self.mosquitto_process is not None:
+                try:
+                    if hasattr(self.mosquitto_process, "shutdown"):
+                        self.mosquitto_process.shutdown()
+                except Exception as e:
+                    logger.debug("Embedded broker shutdown: %s", e)
+                self.mosquitto_process = None
+            _write_bridge_status("disconnected")
+            self._mqtt_config_fingerprint = read_mqtt_config_fingerprint()
+            self._process_pending_events()
+            return True
+
+        if self.auto_start and self.mosquitto_process is None:
+            try:
+                cleanup_existing_services(None)
+            except Exception as e:
+                logger.debug("cleanup_existing_services: %s", e)
+            self.mosquitto_process = start_mosquitto(self.config)
+
+        level_name = getattr(self.config, "log_level", None) or "INFO"
+        logger.setLevel(getattr(logging, level_name.upper(), logging.INFO))
+        try:
+            self._initialize_mqtt()
+        except Exception as e:
+            logger.error("MQTT reconnect after config reload failed: %s", e)
+            return False
+        self._mqtt_config_fingerprint = read_mqtt_config_fingerprint()
+        self._process_pending_events()
+        return True
+
     def _run(self):
         """Main loop: LISTEN for notifications, fetch events, publish to MQTT."""
-        level_name = getattr(self.config, "log_level", None) or "INFO"
+        level_name = (
+            getattr(self.config, "log_level", None) or "INFO"
+            if self.config
+            else "INFO"
+        )
         logger.setLevel(getattr(logging, level_name.upper(), logging.INFO))
         logger.info("Starting consumption loop")
 
         while self.running:
             try:
+                from django.db import close_old_connections
+
+                close_old_connections()
+
+                now = time.time()
+                queue_poll_due = (
+                    now - self._last_queue_poll_time
+                ) >= QUEUE_POLL_INTERVAL
+
+                self._poll_pg_notifications()
+
+                # NOTIFY for config can be missed (same as events): poll DB fingerprint.
+                if queue_poll_due:
+                    current_fp = read_mqtt_config_fingerprint()
+                    if mqtt_config_reload_needed(
+                        self._mqtt_config_fingerprint, current_fp
+                    ):
+                        self._reload_mqtt_config_and_reconnect(reason="config_poll")
+                    self._process_pending_events()
+                    self._last_queue_poll_time = now
+
+                if not self.config or not self.config.enabled:
+                    time.sleep(0.01)
+                    continue
+
                 if not self._ensure_mqtt_connected():
                     time.sleep(5)
                     continue
 
-                now = time.time()
-                if (now - self._last_bridge_status_write) >= BRIDGE_STATUS_REFRESH_INTERVAL:
+                now_status = time.time()
+                if (
+                    now_status - self._last_bridge_status_write
+                ) >= BRIDGE_STATUS_REFRESH_INTERVAL:
                     _write_bridge_status("connected")
-                    self._last_bridge_status_write = now
-
-                # Poll PostgreSQL for notifications
-                if self.pg_conn:
-                    self.pg_conn.poll()
-                    for notify in self.pg_conn.notifies:
-                        if notify.channel == NOTIFY_CHANNEL_RELOAD:
-                            logger.info(
-                                "Config reload requested, reconnecting to broker"
-                            )
-                            try:
-                                from django.core.cache import cache
-
-                                cache.delete("mqtt_active_config")
-                            except Exception as e:
-                                logger.debug("Could not clear config cache: %s", e)
-                            self.config = get_mqtt_config(force_refresh=True)
-                            level_name = getattr(
-                                self.config, "log_level", None
-                            ) or "INFO"
-                            logger.setLevel(
-                                getattr(logging, level_name.upper(), logging.INFO)
-                            )
-                            self._initialize_mqtt()
-                        elif notify.channel == NOTIFY_CHANNEL_EVENTS:
-                            self._process_pending_events()
-                    self.pg_conn.notifies.clear()
-
-                # Do not rely on NOTIFY alone: poolers and timing can drop notifications.
-                if (now - self._last_queue_poll_time) >= QUEUE_POLL_INTERVAL:
-                    self._process_pending_events()
-                    self._last_queue_poll_time = now
+                    self._last_bridge_status_write = now_status
 
                 time.sleep(0.01)
             except Exception as e:
@@ -377,14 +508,16 @@ class PostgresMQTTBridge:
                 len(events),
             )
             for event in events:
-                self._process_event(event)
-                event.processed = True
-                event.save(update_fields=["processed"])
+                if self._process_event(event):
+                    event.processed = True
+                    event.save(update_fields=["processed"])
+                else:
+                    break
         except Exception as e:
             logger.error("Failed to process events: %s", e)
 
-    def _process_event(self, event):
-        """Process a single event and publish to MQTT."""
+    def _process_event(self, event) -> bool:
+        """Publish one queue row. Returns True if done (published or permanently skipped)."""
         topic = event.topic
         payload = event.payload
         qos = event.qos
@@ -396,17 +529,17 @@ class PostgresMQTTBridge:
             topic,
             payload,
         )
-        if topic and payload is not None:
-            self._publish_to_mqtt(topic, payload, qos, retain)
-        else:
+        if not topic or payload is None:
             logger.warning("Invalid event: missing topic or payload")
+            return True
+        return self._publish_to_mqtt(topic, payload, qos, retain)
 
     def _publish_to_mqtt(
         self, topic: str, payload: str, qos: int = 0, retain: bool = False
-    ):
+    ) -> bool:
         if not self.mqtt_client or not self.mqtt_client.is_connected():
             logger.warning("MQTT not connected, cannot publish")
-            return
+            return False
         try:
             out_payload = payload
             if (
@@ -430,11 +563,17 @@ class PostgresMQTTBridge:
             )
             if result.rc != mqtt.MQTT_ERR_SUCCESS:
                 logger.error("Publish failed: rc=%s", result.rc)
+                return False
+            return True
         except Exception as e:
             logger.error("Publish failed: %s", e)
+            return False
 
     def stop(self):
         """Stop the bridge service."""
+        if self._bridge_stop_done:
+            return
+        self._bridge_stop_done = True
         logger.info("Stopping PostgreSQL-MQTT Bridge")
         self.running = False
         if self.mqtt_client:
@@ -458,6 +597,7 @@ class PostgresMQTTBridge:
         if self.auto_start:
             cleanup_existing_services(None)
         release_lock(self.lock_file)
+        self.lock_file = None
         logger.info("Bridge stopped")
 
 

@@ -36,6 +36,14 @@ The `test` option runs `manage.py test_mqtt_api` if that management command exis
 
 The plugin's web dashboard at **`/mqtt/mqtt_monitor/`** shows MQTT configuration and bridge status. (The live event stream/feed has been disabled.)
 
+## Bridge configuration reload
+
+Saving or deleting MQTT configuration in Django triggers `pg_notify` on `nemo_mqtt_reload`, and the bridge also **polls** the enabled configuration row’s `updated_at` on the same schedule as the event queue (default 2s). Broker host, auth, and related settings therefore apply even if the reload notify is lost (for example with some pooler setups). After a successful reconnect, pending queue rows are published immediately.
+
+## In-process bridge vs separate process
+
+By default the plugin starts the bridge from Django (`AppConfig.ready`). Set **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=0`** (environment) or **`NEMO_MQTT_BRIDGE_RUN_IN_DJANGO = False`** in Django settings to skip that and run `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` (or systemd) only. The bridge can start with MQTT disabled and connect when you enable configuration—no Django restart required.
+
 ## Usage
 
 ### Full MQTT Monitor

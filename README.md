@@ -76,6 +76,8 @@ python manage.py migrate NEMO_mqtt_bridge
 
 **Production:** Use EXTERNAL mode so the plugin does not start or kill brokers. Set `NEMO_MQTT_BRIDGE_AUTO_START=0` (env) or `NEMO_MQTT_BRIDGE_AUTO_START = False` in Django settings. Then start the MQTT broker yourself, and run the bridge separately (e.g. `python -m NEMO_mqtt_bridge.postgres_mqtt_bridge` or as a systemd service).
 
+**Bridge in Django vs separate process:** By default the plugin starts the bridge inside the Django process (`AppConfig.ready`). To disable that and run only a standalone bridge, set `NEMO_MQTT_BRIDGE_RUN_IN_DJANGO=0` (env) or `NEMO_MQTT_BRIDGE_RUN_IN_DJANGO = False` in Django settings. The bridge can idle without an enabled MQTT config and pick up settings when you enable them, without restarting Django.
+
 **Docker:** You can run in AUTO mode with the embedded broker (no extra container) by default. The plugin uses mqttools (pure Python) as an in-process MQTT broker—no mosquitto binary needed. To use an external broker instead, set `NEMO_MQTT_BRIDGE_AUTO_START=0` and point NEMO's MQTT config to your broker (e.g. `broker_host=mqtt` if using a service named `mqtt` in docker-compose).
 
 ### Plugin URLs
@@ -95,5 +97,6 @@ Both paths require login. If you get a 404, check which URL scheme your NEMO use
 
 ---
 
+- **Robustness roadmap:** Phases 1–5 in [docs/ROBUSTNESS_PLAN.md](docs/ROBUSTNESS_PLAN.md) are implemented in 2.1.5 (idle bridge until MQTT enabled, processed-only-on-publish, LISTEN reconnect, `close_old_connections`, `NEMO_MQTT_BRIDGE_RUN_IN_DJANGO`). Phase 6 items there remain optional.
 - **Monitoring:** Connection status at `/mqtt_monitor/` (Docker) or `/mqtt/mqtt_monitor/` (manual URL include); CLI tools in `NEMO_mqtt_bridge.monitoring` (see `src/NEMO_mqtt_bridge/monitoring/README.md`).
 - **License:** MIT. [Issues](https://github.com/alexanderenrique/NEMO-MQTT-Plugin/issues) · [Discussions](https://github.com/alexanderenrique/NEMO-MQTT-Plugin/discussions)

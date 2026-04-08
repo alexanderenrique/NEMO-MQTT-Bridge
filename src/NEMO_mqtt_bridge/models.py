@@ -2,10 +2,12 @@
 Models for MQTT plugin configuration and message history.
 """
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.db.models.signals import post_save, post_delete
+from django.db.models import Q
 from django.dispatch import receiver
 
 
@@ -104,9 +106,30 @@ class MQTTConfiguration(models.Model):
         db_table = "nemo_mqtt_mqttconfiguration"
         verbose_name = "MQTT Configuration"
         verbose_name_plural = "MQTT Configurations"
+        constraints = [
+            # Enforce: at most one enabled config row.
+            # Partial unique index (PostgreSQL) on enabled=True.
+            models.UniqueConstraint(
+                fields=["enabled"],
+                condition=Q(enabled=True),
+                name="nemo_mqtt_unique_enabled_configuration",
+            )
+        ]
 
     def __str__(self):
         return f"{self.name} ({'Enabled' if self.enabled else 'Disabled'})"
+
+    def clean(self):
+        super().clean()
+        if not self.enabled:
+            return
+        qs = MQTTConfiguration.objects.filter(enabled=True)
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        if qs.exists():
+            raise ValidationError(
+                {"enabled": "Only one MQTT configuration can be enabled at a time."}
+            )
 
 
 class MQTTMessageLog(models.Model):
@@ -244,5 +267,8 @@ def clear_mqtt_config_cache_on_save(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=MQTTConfiguration)
 def clear_mqtt_config_cache_on_delete(sender, instance, **kwargs):
-    """Clear the MQTT configuration cache when a configuration is deleted"""
+    """Clear the MQTT configuration cache when a configuration is deleted."""
     cache.delete("mqtt_active_config")
+    from .db_publisher import notify_bridge_reload_config
+
+    notify_bridge_reload_config()
