@@ -43,14 +43,26 @@ if __name__ == "__main__":
 
 try:
     from NEMO_mqtt_bridge.models import MQTTConfiguration, MQTTEventQueue, MQTTBridgeStatus
-    from NEMO_mqtt_bridge.utils import get_mqtt_config
+    from NEMO_mqtt_bridge.utils import (
+        get_mqtt_config,
+        mqtt_config_fingerprint_serial,
+        mqtt_config_safe_snapshot,
+        note_mqtt_bridge_diagnostics_error,
+        update_mqtt_bridge_diagnostics,
+    )
 except ImportError:
     from NEMO.plugins.NEMO_mqtt_bridge.models import (
         MQTTConfiguration,
         MQTTEventQueue,
         MQTTBridgeStatus,
     )
-    from NEMO.plugins.NEMO_mqtt_bridge.utils import get_mqtt_config
+    from NEMO.plugins.NEMO_mqtt_bridge.utils import (
+        get_mqtt_config,
+        mqtt_config_fingerprint_serial,
+        mqtt_config_safe_snapshot,
+        note_mqtt_bridge_diagnostics_error,
+        update_mqtt_bridge_diagnostics,
+    )
 
 try:
     from NEMO_mqtt_bridge.connection_manager import ConnectionManager
@@ -72,6 +84,25 @@ except ImportError:
     from NEMO.plugins.NEMO_mqtt_bridge.lifecycle_log import lifecycle_log_prefix
 
 logger = logging.getLogger(__name__)
+
+
+def _log_applied_mqtt_broker_settings(config) -> None:
+    """One safe INFO line per (re)connect setup; never logs password or HMAC secret."""
+    if not config:
+        return
+    auth = bool(config.username and config.password)
+    updated = config.updated_at.isoformat() if config.updated_at else None
+    logger.info(
+        "%s Applying MQTT broker settings: %s:%s username=%r auth=%s config_id=%s updated_at=%s",
+        lifecycle_log_prefix(),
+        config.broker_host or "localhost",
+        config.broker_port or 1883,
+        config.username or None,
+        "yes" if auth else "no",
+        config.pk,
+        updated,
+    )
+
 
 NOTIFY_CHANNEL_EVENTS = "nemo_mqtt_events"
 NOTIFY_CHANNEL_RELOAD = "nemo_mqtt_reload"
@@ -203,6 +234,37 @@ class PostgresMQTTBridge:
         self.stop()
         sys.exit(0)
 
+    def _interruptible_main_loop_sleep(
+        self, seconds: float, *, exit_if_mqtt_connected: bool = False
+    ) -> None:
+        """
+        Sleep up to `seconds` while still processing PostgreSQL NOTIFY and config wakeup.
+        A plain time.sleep here blocked _poll_pg_notifications, delaying config reload up to
+        the full sleep when MQTT reconnect was failing.
+        When exit_if_mqtt_connected is True, return as soon as the MQTT client is connected
+        (e.g. reload during poll succeeded) so the main loop does not idle out the rest
+        of the backoff.
+        """
+        end = time.monotonic() + max(0.0, float(seconds))
+        chunk = 0.25
+        while self.running:
+            if self._mqtt_wakeup_event.is_set():
+                self._mqtt_wakeup_event.clear()
+                return
+            try:
+                from django.db import close_old_connections
+
+                close_old_connections()
+            except Exception:
+                pass
+            self._poll_pg_notifications()
+            if exit_if_mqtt_connected and self.mqtt_client and self.mqtt_client.is_connected():
+                return
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                return
+            time.sleep(min(chunk, remaining))
+
     def start(self):
         """Start the bridge service (PostgreSQL listener always; MQTT when config enabled)."""
         self._bridge_stop_done = False
@@ -225,7 +287,7 @@ class PostgresMQTTBridge:
 
             self._initialize_pg()
 
-            self.config = get_mqtt_config()
+            self.config = get_mqtt_config(force_refresh=True)
             has_enabled = bool(self.config and self.config.enabled)
 
             if has_enabled and self.auto_start:
@@ -307,6 +369,25 @@ class PostgresMQTTBridge:
             self.pg_conn = None
         self._initialize_pg()
 
+    def _publish_reload_diagnostics(self, reason: str, *, last_error: str = "") -> None:
+        from django.utils import timezone
+
+        update_mqtt_bridge_diagnostics(
+            {
+                "last_reload_reason": reason,
+                "last_reload_at": timezone.now().isoformat(),
+                "applied_config_snapshot": (
+                    mqtt_config_safe_snapshot(self.config)
+                    if (self.config and self.config.enabled)
+                    else None
+                ),
+                "applied_fingerprint": mqtt_config_fingerprint_serial(
+                    self._mqtt_config_fingerprint
+                ),
+                "last_error": last_error,
+            }
+        )
+
     def _poll_pg_notifications(self):
         """Consume NOTIFY payloads; reconnect the listener if poll fails."""
         try:
@@ -314,6 +395,12 @@ class PostgresMQTTBridge:
                 self._reconnect_pg_listener()
             self.pg_conn.poll()
             for notify in self.pg_conn.notifies:
+                logger.debug(
+                    "PostgreSQL NOTIFY received channel=%s pid=%s payload_len=%s",
+                    getattr(notify, "channel", None),
+                    getattr(notify, "pid", None),
+                    len(getattr(notify, "payload", "") or ""),
+                )
                 if notify.channel == NOTIFY_CHANNEL_RELOAD:
                     self._reload_mqtt_config_and_reconnect(reason="notify")
                 elif notify.channel == NOTIFY_CHANNEL_EVENTS:
@@ -337,9 +424,17 @@ class PostgresMQTTBridge:
                 logger.debug("Cleanup of previous MQTT client: %s", e)
             self.mqtt_client = None
 
-        self.config = get_mqtt_config()
+        self.config = get_mqtt_config(force_refresh=True)
         if not self.config or not self.config.enabled:
             raise RuntimeError("No enabled MQTT configuration")
+
+        logger.debug(
+            "%s _initialize_mqtt force_immediate_once=%s snapshot=%s",
+            lifecycle_log_prefix(),
+            force_immediate_once,
+            mqtt_config_safe_snapshot(self.config),
+        )
+        _log_applied_mqtt_broker_settings(self.config)
 
         max_retries = (
             self.config.max_reconnect_attempts if self.config.max_reconnect_attempts else None
@@ -355,11 +450,16 @@ class PostgresMQTTBridge:
         )
 
         def connect():
-            self.config = get_mqtt_config()
+            self.config = get_mqtt_config(force_refresh=True)
             if not self.config or not self.config.enabled:
                 raise RuntimeError("No enabled MQTT configuration")
             self.broker_host = self.config.broker_host or "localhost"
             self.broker_port = self.config.broker_port or 1883
+            logger.debug(
+                "%s MQTT connect attempt snapshot=%s",
+                lifecycle_log_prefix(),
+                mqtt_config_safe_snapshot(self.config),
+            )
             return connect_mqtt(
                 self.config,
                 self._on_connect,
@@ -398,6 +498,7 @@ class PostgresMQTTBridge:
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             _write_bridge_status("connected")
+            update_mqtt_bridge_diagnostics({"last_error": ""})
             if self._mqtt_has_connected_before:
                 logger.info(
                     "%s Successfully reconnected to MQTT broker at %s:%s",
@@ -422,7 +523,11 @@ class PostgresMQTTBridge:
                 4: "bad auth",
                 5: "unauthorized",
             }
-            logger.error("MQTT connection failed: %s (rc=%s)", errors.get(rc, rc), rc)
+            err_label = errors.get(rc, str(rc))
+            logger.error("MQTT connection failed: %s (rc=%s)", err_label, rc)
+            note_mqtt_bridge_diagnostics_error(
+                "MQTT connect rejected: %s (rc=%s)" % (err_label, rc)
+            )
 
     def _on_disconnect(self, client, userdata, rc):
         self.last_disconnect_time = time.time()
@@ -449,6 +554,11 @@ class PostgresMQTTBridge:
             logger.warning("MQTT disconnected, reconnecting...")
             self._last_reconnecting_log_time = now
         try:
+            logger.debug(
+                "%s _ensure_mqtt_connected: client missing or disconnected, calling "
+                "_initialize_mqtt",
+                lifecycle_log_prefix(),
+            )
             self._initialize_mqtt()
             return True
         except Exception as e:
@@ -462,6 +572,7 @@ class PostgresMQTTBridge:
                 logger.error("Reconnection failed: %s", e)
                 self._last_reconnect_fail_log_time = now
                 self._last_reconnect_fail_msg = msg
+                note_mqtt_bridge_diagnostics_error(msg)
             return False
 
     def _disconnect_mqtt_client(self):
@@ -485,6 +596,11 @@ class PostgresMQTTBridge:
             lifecycle_log_prefix(),
             reason,
         )
+        logger.debug(
+            "%s _reload_mqtt_config_and_reconnect reason=%s before_cache_delete",
+            lifecycle_log_prefix(),
+            reason,
+        )
         # If we are currently waiting on reconnect backoff, wake immediately so we
         # can attempt the new settings without waiting out the previous delay.
         try:
@@ -495,10 +611,19 @@ class PostgresMQTTBridge:
             from django.core.cache import cache
 
             cache.delete("mqtt_active_config")
+            logger.debug(
+                "%s _reload_mqtt_config_and_reconnect deleted mqtt_active_config cache key",
+                lifecycle_log_prefix(),
+            )
         except Exception as e:
             logger.debug("Could not clear config cache: %s", e)
 
         self.config = get_mqtt_config(force_refresh=True)
+        logger.debug(
+            "%s _reload_mqtt_config_and_reconnect after force_refresh snapshot=%s",
+            lifecycle_log_prefix(),
+            mqtt_config_safe_snapshot(self.config),
+        )
 
         if not self.config or not self.config.enabled:
             self._disconnect_mqtt_client()
@@ -512,6 +637,13 @@ class PostgresMQTTBridge:
             _write_bridge_status("disconnected")
             self._mqtt_config_fingerprint = read_mqtt_config_fingerprint()
             self._process_pending_events()
+            self._publish_reload_diagnostics(reason, last_error="")
+            logger.info(
+                "%s MQTT config reload applied reason=%s fingerprint=%s (disabled or no config)",
+                lifecycle_log_prefix(),
+                reason,
+                self._mqtt_config_fingerprint,
+            )
             return True
 
         if self.auto_start and self.mosquitto_process is None:
@@ -527,9 +659,26 @@ class PostgresMQTTBridge:
             self._initialize_mqtt(force_immediate_once=True)
         except Exception as e:
             logger.error("MQTT reconnect after config reload failed: %s", e)
+            note_mqtt_bridge_diagnostics_error(str(e))
+            from django.utils import timezone
+
+            update_mqtt_bridge_diagnostics(
+                {
+                    "last_reload_reason": reason,
+                    "last_reload_at": timezone.now().isoformat(),
+                }
+            )
             return False
         self._mqtt_config_fingerprint = read_mqtt_config_fingerprint()
         self._process_pending_events()
+        self._publish_reload_diagnostics(reason, last_error="")
+        logger.info(
+            "%s MQTT config reload applied reason=%s fingerprint=%s snapshot=%s",
+            lifecycle_log_prefix(),
+            reason,
+            self._mqtt_config_fingerprint,
+            mqtt_config_safe_snapshot(self.config),
+        )
         return True
 
     def _run(self):
@@ -541,6 +690,11 @@ class PostgresMQTTBridge:
         )
         logger.setLevel(getattr(logging, level_name.upper(), logging.INFO))
         logger.info("%s Starting consumption loop", lifecycle_log_prefix())
+        logger.debug(
+            "%s consumption loop initial mqtt_config_fingerprint=%s",
+            lifecycle_log_prefix(),
+            self._mqtt_config_fingerprint,
+        )
 
         while self.running:
             try:
@@ -568,6 +722,13 @@ class PostgresMQTTBridge:
                     if mqtt_config_reload_needed(
                         self._mqtt_config_fingerprint, current_fp
                     ):
+                        logger.debug(
+                            "%s mqtt config fingerprint changed (config_poll): "
+                            "stored=%s current=%s",
+                            lifecycle_log_prefix(),
+                            self._mqtt_config_fingerprint,
+                            current_fp,
+                        )
                         self._reload_mqtt_config_and_reconnect(reason="config_poll")
                     self._process_pending_events()
                     self._last_queue_poll_time = now
@@ -577,7 +738,9 @@ class PostgresMQTTBridge:
                     continue
 
                 if not self._ensure_mqtt_connected():
-                    time.sleep(5)
+                    self._interruptible_main_loop_sleep(
+                        5, exit_if_mqtt_connected=True
+                    )
                     continue
 
                 now_status = time.time()
@@ -590,7 +753,7 @@ class PostgresMQTTBridge:
                 time.sleep(0.01)
             except Exception as e:
                 logger.error("Service loop error: %s", e)
-                time.sleep(1)
+                self._interruptible_main_loop_sleep(1)
 
         logger.info("%s Consumption loop stopped", lifecycle_log_prefix())
 

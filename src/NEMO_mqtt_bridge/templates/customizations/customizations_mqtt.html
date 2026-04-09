@@ -24,64 +24,11 @@
         </div>
 
         <div class="customization-separation"></div>
-        <h3 class="customization-section-title">Event Types</h3>
+        <h3 class="customization-section-title">Published events</h3>
         <p class="help-block light-grey">
-            Select which NEMO events should be published to MQTT. Uncheck any you do not want sent to the broker.
+            When MQTT is enabled, <strong>all</strong> supported NEMO event streams are published (tool usage enable/disable,
+            operational / non-operational, tasks, tool/area/reservation saves, area access, etc.). There are no per-category toggles.
         </p>
-
-        <div class="form-group">
-            <label class="control-label col-md-3">Enable / Disable</label>
-            <div class="col-md-9">
-                <div class="checkbox">
-                    <label>
-                        <input type="checkbox"
-                               name="mqtt_event_usage_event_save"
-                               {% if mqtt_event_filters.usage_event_save %}checked{% endif %}
-                               value="enabled">
-                        Publish tool <strong>enabled</strong> and <strong>disabled</strong> events
-                        <span class="help-block light-grey">
-                            Sent when a user starts or stops using a tool (<code>nemo/tools/{id}/enabled</code>, <code>.../disabled</code>).
-                        </span>
-                    </label>
-                </div>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label class="control-label col-md-3">Operational / Non-operational</label>
-            <div class="col-md-9">
-                <div class="checkbox">
-                    <label>
-                        <input type="checkbox"
-                               name="mqtt_event_operational_group"
-                               {% if mqtt_event_filters.tool_operational and mqtt_event_filters.tool_non_operational %}checked{% endif %}
-                               value="enabled">
-                        Publish <strong>operational</strong> and <strong>non-operational</strong> events
-                        <span class="help-block light-grey">
-                            Sent when a tool transitions between up/down (<code>nemo/tools/{id}/operational</code>, <code>.../non-operational</code>).
-                        </span>
-                    </label>
-                </div>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label class="control-label col-md-3">Task created / Task resolved</label>
-            <div class="col-md-9">
-                <div class="checkbox">
-                    <label>
-                        <input type="checkbox"
-                               name="mqtt_event_task_group"
-                               {% if mqtt_event_filters.task_created and mqtt_event_filters.task_resolved %}checked{% endif %}
-                               value="enabled">
-                        Publish <strong>task created</strong> and <strong>task resolved</strong> events
-                        <span class="help-block light-grey">
-                            Sent when tasks are created or updated for a tool (<code>nemo/tools/{id}/tasks</code>).
-                        </span>
-                    </label>
-                </div>
-            </div>
-        </div>
 
         <div class="form-group">
             <label class="control-label col-md-3" for="mqtt_name">Configuration Name</label>
@@ -372,6 +319,22 @@
                     <th>Pending queue rows</th>
                     <td><code>{{ pending_queue_count }}</code></td>
                 </tr>
+                <tr>
+                    <th>Last bridge config reload</th>
+                    <td id="mqtt-bridge-diag-reload"><span class="text-muted">(no data yet)</span></td>
+                </tr>
+                <tr>
+                    <th>Applied config (bridge process)</th>
+                    <td id="mqtt-bridge-diag-applied"><span class="text-muted">(no data yet)</span></td>
+                </tr>
+                <tr>
+                    <th>Last bridge error</th>
+                    <td id="mqtt-bridge-diag-error"><span class="text-muted">(none)</span></td>
+                </tr>
+                <tr>
+                    <th>Status API</th>
+                    <td id="mqtt-bridge-poll-error"><span class="text-muted">Loading…</span></td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -404,6 +367,13 @@ MQTT broker
   connection: <span id="mqtt-diag-bridge-status">{% if bridge_status %}{{ bridge_status }}{% else %}(unknown){% endif %}</span>
   status_updated_at: <span id="mqtt-diag-bridge-updated-at">(unknown)</span>
   status_age: <span id="mqtt-diag-bridge-age">(unknown)</span>
+
+Bridge process diagnostics (cache)
+  last_reload: <span id="mqtt-diag-reload-line">(no data yet)</span>
+  applied_fingerprint: <span id="mqtt-diag-applied-fp">(no data yet)</span>
+  applied_config_snapshot: <span id="mqtt-diag-applied-snap">(no data yet)</span>
+  last_error: <span id="mqtt-diag-last-err">(none)</span>
+  diagnostics_updated_at: <span id="mqtt-diag-diag-updated">(unknown)</span>
 
 MQTT target
   broker_host: {{ config.broker_host }}
@@ -644,15 +614,132 @@ function toggleHmacFields() {
         }
     }
 
+    function formatDiagIso(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleString();
+    }
+
+    function renderDiagnosticsPayload(data) {
+        var diag = (data && data.diagnostics) || {};
+        var reason = diag.last_reload_reason;
+        var at = diag.last_reload_at;
+        var reloadText = '(no data yet)';
+        if (reason || at) {
+            reloadText = (reason || '(unknown reason)');
+            if (at) reloadText += ' — ' + formatDiagIso(at);
+        }
+        var reloadEl = document.getElementById('mqtt-bridge-diag-reload');
+        if (reloadEl) {
+            reloadEl.textContent = '';
+            if (reloadText === '(no data yet)') {
+                var spR = document.createElement('span');
+                spR.className = 'text-muted';
+                spR.textContent = reloadText;
+                reloadEl.appendChild(spR);
+            } else {
+                var codeR = document.createElement('code');
+                codeR.textContent = reloadText;
+                reloadEl.appendChild(codeR);
+            }
+        }
+
+        var fp = diag.applied_fingerprint;
+        var fpStr = '(no data yet)';
+        if (fp && typeof fp === 'object') {
+            fpStr = 'id=' + (fp.id != null ? fp.id : '?') + ', updated_at=' + (fp.updated_at || '(null)');
+        }
+        var appliedEl = document.getElementById('mqtt-bridge-diag-applied');
+        if (appliedEl) {
+            var snap = diag.applied_config_snapshot;
+            var line = fpStr;
+            if (snap && typeof snap === 'object') {
+                line += '; snapshot id=' + (snap.id != null ? snap.id : '?');
+                if (snap.updated_at) line += ' @ ' + snap.updated_at;
+            } else if (fp) {
+                line += '; snapshot (disabled or none)';
+            }
+            appliedEl.textContent = '';
+            var codeA = document.createElement('code');
+            codeA.textContent = line;
+            appliedEl.appendChild(codeA);
+        }
+
+        var err = diag.last_error;
+        var errEl = document.getElementById('mqtt-bridge-diag-error');
+        if (errEl) {
+            errEl.textContent = '';
+            if (err) {
+                var spE = document.createElement('span');
+                spE.className = 'text-danger';
+                var codeE = document.createElement('code');
+                codeE.textContent = String(err);
+                spE.appendChild(codeE);
+                errEl.appendChild(spE);
+            } else {
+                var spN = document.createElement('span');
+                spN.className = 'text-muted';
+                spN.textContent = '(none)';
+                errEl.appendChild(spN);
+            }
+        }
+
+        var dr = document.getElementById('mqtt-diag-reload-line');
+        if (dr) dr.textContent = reloadText;
+        var dfp = document.getElementById('mqtt-diag-applied-fp');
+        if (dfp) dfp.textContent = fpStr;
+        var ds = document.getElementById('mqtt-diag-applied-snap');
+        if (ds) {
+            try {
+                ds.textContent = diag.applied_config_snapshot
+                    ? JSON.stringify(diag.applied_config_snapshot)
+                    : '(none)';
+            } catch (e) {
+                ds.textContent = '(unavailable)';
+            }
+        }
+        var de = document.getElementById('mqtt-diag-last-err');
+        if (de) de.textContent = err ? String(err) : '(none)';
+        var du = document.getElementById('mqtt-diag-diag-updated');
+        if (du) du.textContent = diag.diagnostics_updated_at ? formatDiagIso(diag.diagnostics_updated_at) : '(unknown)';
+    }
+
     function poll() {
         fetch("{% url 'mqtt_plugin:bridge_status' %}", { credentials: 'same-origin', cache: 'no-store' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) {
+                    throw new Error('HTTP ' + r.status);
+                }
+                return r.json();
+            })
             .then(function(data) {
+                var pollEl = document.getElementById('mqtt-bridge-poll-error');
+                if (pollEl) {
+                    pollEl.textContent = '';
+                    var spOk = document.createElement('span');
+                    spOk.className = 'text-muted';
+                    spOk.textContent = 'OK';
+                    pollEl.appendChild(spOk);
+                }
                 renderBridgeHeartbeat(data && data.last_heartbeat);
                 renderBridgeStatus(data && data.status);
                 renderBridgeUpdatedAt(data && data.updated_at);
+                renderDiagnosticsPayload(data);
             })
-            .catch(function() { /* ignore */ });
+            .catch(function(err) {
+                var pollEl = document.getElementById('mqtt-bridge-poll-error');
+                var msg = (err && err.message) ? err.message : 'request failed';
+                if (pollEl) {
+                    pollEl.textContent = '';
+                    var spPe = document.createElement('span');
+                    spPe.className = 'text-danger';
+                    var codePe = document.createElement('code');
+                    codePe.textContent = msg;
+                    spPe.appendChild(codePe);
+                    pollEl.appendChild(spPe);
+                }
+            });
     }
 
     initDebugToggle();

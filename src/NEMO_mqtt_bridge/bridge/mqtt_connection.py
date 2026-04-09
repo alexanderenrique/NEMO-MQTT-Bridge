@@ -29,17 +29,20 @@ def connect_mqtt(
     use_auth = bool(config.username and config.password)
     if use_auth:
         client.username_pw_set(config.username, config.password)
-    logger.debug(
-        "MQTT connect: %s:%s username=%r password_set=%s",
-        config.broker_host or "localhost",
-        config.broker_port or 1883,
-        config.username or None,
-        use_auth,
-    )
 
     broker_host = config.broker_host or "localhost"
     broker_port = config.broker_port or 1883
     keepalive = config.keepalive or 60
+
+    logger.debug(
+        "MQTT connect: client_id=%s %s:%s keepalive=%s username=%r password_set=%s",
+        client_id,
+        broker_host,
+        broker_port,
+        keepalive,
+        config.username or None,
+        use_auth,
+    )
 
     client.connect(broker_host, broker_port, keepalive)
     client.loop_start()
@@ -55,6 +58,12 @@ def connect_mqtt(
         client.disconnect()
     except Exception:
         pass
+    logger.info(
+        "MQTT connection timeout to %s:%s after %ss",
+        broker_host,
+        broker_port,
+        timeout,
+    )
     raise RuntimeError(
         f"Connection timeout to {broker_host}:{broker_port} after {timeout}s"
     )

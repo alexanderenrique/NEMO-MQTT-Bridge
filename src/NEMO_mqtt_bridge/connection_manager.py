@@ -132,6 +132,10 @@ class ConnectionManager:
                     while True:
                         if wakeup_event.is_set():
                             wakeup_event.clear()
+                            logger.debug(
+                                "Connection backoff interrupted by config wakeup "
+                                "(retrying immediately)"
+                            )
                             break
                         remaining = end - time.monotonic()
                         if remaining <= 0:

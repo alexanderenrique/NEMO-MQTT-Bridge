@@ -41,6 +41,13 @@ def mqtt_bridge_status(request):
     status = None
     updated_at = None
     last_heartbeat = None
+    diagnostics = {}
+    try:
+        from .utils import read_mqtt_bridge_diagnostics
+
+        diagnostics = read_mqtt_bridge_diagnostics()
+    except Exception:
+        pass
     try:
         from .models import MQTTBridgeStatus
 
@@ -57,5 +64,6 @@ def mqtt_bridge_status(request):
             "status": status,
             "updated_at": updated_at,
             "last_heartbeat": last_heartbeat,
+            "diagnostics": diagnostics,
         }
     )

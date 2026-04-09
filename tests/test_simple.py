@@ -21,15 +21,13 @@ def test_package_import():
 def test_models_import():
     """Test that models can be imported"""
     from NEMO_mqtt_bridge.models import (
-    MQTTConfiguration,
-    MQTTMessageLog,
-    MQTTEventFilter,
-    MQTTEventQueue,
-    MQTTBridgeStatus,
-)
+        MQTTConfiguration,
+        MQTTMessageLog,
+        MQTTEventQueue,
+        MQTTBridgeStatus,
+    )
     assert MQTTConfiguration is not None
     assert MQTTMessageLog is not None
-    assert MQTTEventFilter is not None
     assert MQTTEventQueue is not None
     assert MQTTBridgeStatus is not None
     logger.info("Models imported successfully")

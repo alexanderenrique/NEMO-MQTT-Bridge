@@ -4,7 +4,7 @@ Utility functions for MQTT plugin.
 
 import json
 import logging
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 from django.conf import settings
 from django.utils import timezone
 from django.http import HttpResponse
@@ -13,6 +13,72 @@ if TYPE_CHECKING:
     from .models import MQTTConfiguration
 
 logger = logging.getLogger(__name__)
+
+
+def mqtt_config_safe_snapshot(config: Optional["MQTTConfiguration"]) -> Optional[Dict[str, Any]]:
+    """
+    Non-secret fields for DEBUG/INFO diagnostics (never password or HMAC secret).
+    """
+    if config is None:
+        return None
+    updated = getattr(config, "updated_at", None)
+    return {
+        "id": config.pk,
+        "updated_at": updated.isoformat() if updated is not None else None,
+        "enabled": bool(config.enabled),
+        "broker_host": config.broker_host,
+        "broker_port": config.broker_port,
+        "username": config.username or None,
+        "password_set": bool(getattr(config, "password", None)),
+        "use_hmac": bool(getattr(config, "use_hmac", False)),
+        "hmac_key_set": bool(getattr(config, "hmac_secret_key", None)),
+        "client_id": getattr(config, "client_id", None),
+        "keepalive": getattr(config, "keepalive", None),
+    }
+
+
+MQTT_BRIDGE_DIAGNOSTICS_CACHE_KEY = "mqtt_bridge_diagnostics"
+MQTT_BRIDGE_DIAGNOSTICS_CACHE_TIMEOUT = 600
+
+
+def mqtt_config_fingerprint_serial(
+    fp: Optional[Tuple[Any, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Serialize (id, updated_at) from DB for JSON/cache (no secrets)."""
+    if fp is None:
+        return None
+    cid, updated_at = fp
+    return {
+        "id": cid,
+        "updated_at": updated_at.isoformat() if updated_at is not None else None,
+    }
+
+
+def read_mqtt_bridge_diagnostics() -> Dict[str, Any]:
+    from django.core.cache import cache
+
+    raw = cache.get(MQTT_BRIDGE_DIAGNOSTICS_CACHE_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def update_mqtt_bridge_diagnostics(partial: Dict[str, Any]) -> None:
+    from django.core.cache import cache
+    from django.utils import timezone
+
+    data = read_mqtt_bridge_diagnostics()
+    data.update(partial)
+    data["diagnostics_updated_at"] = timezone.now().isoformat()
+    cache.set(
+        MQTT_BRIDGE_DIAGNOSTICS_CACHE_KEY,
+        data,
+        MQTT_BRIDGE_DIAGNOSTICS_CACHE_TIMEOUT,
+    )
+
+
+def note_mqtt_bridge_diagnostics_error(message: str) -> None:
+    if not message:
+        return
+    update_mqtt_bridge_diagnostics({"last_error": str(message)[:500]})
 
 
 def get_mqtt_config(force_refresh: bool = False) -> Optional["MQTTConfiguration"]:
@@ -29,15 +95,28 @@ def get_mqtt_config(force_refresh: bool = False) -> Optional["MQTTConfiguration"
     from django.core.cache import cache
 
     if not force_refresh:
-        config = cache.get("mqtt_active_config")
-        if config is not None:
-            return config if config != "NO_CONFIG" else None
+        cached = cache.get("mqtt_active_config")
+        if cached is not None:
+            if cached == "NO_CONFIG":
+                logger.debug(
+                    "get_mqtt_config force_refresh=False source=cache marker=NO_CONFIG"
+                )
+                return None
+            logger.debug(
+                "get_mqtt_config force_refresh=False source=cache snapshot=%s",
+                mqtt_config_safe_snapshot(cached),
+            )
+            return cached
 
     # Force refresh or cache miss - query database
     try:
         from django.db import connection
 
         if "nemo_mqtt_mqttconfiguration" not in connection.introspection.table_names():
+            logger.debug(
+                "get_mqtt_config force_refresh=%s source=database table_missing",
+                force_refresh,
+            )
             return None
 
         from .models import MQTTConfiguration
@@ -49,6 +128,11 @@ def get_mqtt_config(force_refresh: bool = False) -> Optional["MQTTConfiguration"
         else:
             cache.set("mqtt_active_config", "NO_CONFIG", 300)
 
+        logger.debug(
+            "get_mqtt_config force_refresh=%s source=database snapshot=%s",
+            force_refresh,
+            mqtt_config_safe_snapshot(config),
+        )
         return config
     except Exception as e:
         logger.warning(f"Could not load MQTT configuration from database: {e}")
@@ -136,53 +220,6 @@ def log_mqtt_message(
         )
     except Exception as e:
         logger.error(f"Failed to log MQTT message: {e}")
-
-
-def is_event_enabled(event_type: str) -> bool:
-    """
-    Check if a specific event type is enabled for MQTT publishing.
-
-    Args:
-        event_type: Type of event to check
-
-    Returns:
-        True if event is enabled, False otherwise
-    """
-    try:
-        from .models import MQTTEventFilter
-
-        filter_obj = MQTTEventFilter.objects.filter(event_type=event_type).first()
-        if filter_obj:
-            return filter_obj.enabled
-
-        # Default to enabled if no filter exists
-        return True
-    except Exception as e:
-        logger.warning(f"Could not check event filter for {event_type}: {e}")
-        return True
-
-
-def get_event_topic_override(event_type: str) -> Optional[str]:
-    """
-    Get custom topic override for an event type.
-
-    Args:
-        event_type: Type of event
-
-    Returns:
-        Custom topic string if configured, None otherwise
-    """
-    try:
-        from .models import MQTTEventFilter
-
-        filter_obj = MQTTEventFilter.objects.filter(event_type=event_type).first()
-        if filter_obj and filter_obj.topic_override:
-            return filter_obj.topic_override
-
-        return None
-    except Exception as e:
-        logger.warning(f"Could not get topic override for {event_type}: {e}")
-        return None
 
 
 def sign_payload_hmac(payload: str, secret_key: str, algorithm: str = "sha256") -> str:

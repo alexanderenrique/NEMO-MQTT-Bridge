@@ -26,6 +26,19 @@ This is a Django plugin that publishes NEMO tool usage events to MQTT (tool enab
 
 Configuration is stored in Django (e.g. `/customization/mqtt/`) and loaded by the bridge on each connection.
 
+### Stakeholders and PostgreSQL `NOTIFY`
+
+Two channels coordinate Django and the standalone bridge:
+
+| Channel | When it fires | Who acts |
+|---------|----------------|----------|
+| **`nemo_mqtt_reload`** | After `MQTTConfiguration` is saved or deleted (on **transaction commit**). Django also clears the `mqtt_active_config` cache key in the saving process. | The bridge **LISTEN**s, clears its own cache copy, reloads config from PostgreSQL (with fingerprint polling ~every 2s as a fallback if NOTIFY is missed), and reconnects to the broker if needed. |
+| **`nemo_mqtt_events`** | After each new row in **`MQTTEventQueue`** (Django signals enqueue, then `pg_notify`). | The bridge drains pending rows and publishes to MQTT. |
+
+**Event streams:** There are **no** per-category toggles. Every supported signal path enqueues when its NEMO event occurs (while MQTT is enabled and PostgreSQL is available).
+
+**Multi-worker note:** Django’s `mqtt_active_config` entry lives in your configured cache backend. With **per-process** caches (e.g. LocMem), workers other than the one that saved a config may see stale broker settings until the TTL expires or they read fresh data; use a **shared** cache (Redis/Memcached) if all web workers must see broker changes immediately. The **bridge process** always reloads from the DB on reconnect after a reload notification or fingerprint change.
+
 ### Tool operational vs. down (per-tool status)
 
 In addition to **usage** events (who enabled/disabled the tool), the plugin publishes **operational status** so displays can show when a tool is marked down or back up:

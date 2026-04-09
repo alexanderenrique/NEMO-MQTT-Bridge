@@ -4,7 +4,7 @@ Tests for NEMO MQTT Plugin models
 import pytest
 from django.test import TestCase
 from django.core.exceptions import ValidationError
-from NEMO_mqtt_bridge.models import MQTTConfiguration, MQTTMessageLog, MQTTEventFilter
+from NEMO_mqtt_bridge.models import MQTTConfiguration, MQTTMessageLog
 
 
 class MQTTConfigurationModelTest(TestCase):
@@ -120,61 +120,3 @@ class MQTTMessageLogModelTest(TestCase):
         logs = list(MQTTMessageLog.objects.all())
         self.assertEqual(logs[0], log2)  # Most recent first
         self.assertEqual(logs[1], log1)
-
-
-class MQTTEventFilterModelTest(TestCase):
-    """Test MQTTEventFilter model"""
-    
-    def test_create_event_filter(self):
-        """Test creating an event filter"""
-        filter_obj = MQTTEventFilter.objects.create(
-            event_type='tool_save',
-            enabled=True,
-            topic_override='custom/tool/save',
-            include_payload=True
-        )
-        
-        self.assertEqual(filter_obj.event_type, 'tool_save')
-        self.assertTrue(filter_obj.enabled)
-        self.assertEqual(filter_obj.topic_override, 'custom/tool/save')
-        self.assertTrue(filter_obj.include_payload)
-        self.assertEqual(str(filter_obj), 'Tool Save (Enabled)')
-    
-    def test_event_filter_unique_constraint(self):
-        """Test that event types must be unique"""
-        MQTTEventFilter.objects.create(
-            event_type='tool_save',
-            enabled=True
-        )
-        
-        with self.assertRaises(Exception):  # IntegrityError
-            MQTTEventFilter.objects.create(
-                event_type='tool_save',
-                enabled=False
-            )
-    
-    def test_event_type_choices(self):
-        """Test that event type choices are valid"""
-        valid_choices = [
-            'tool_save', 'tool_delete',
-            'area_save', 'area_delete',
-            'reservation_save', 'reservation_delete',
-            'usage_event_save', 'area_access_save'
-        ]
-        
-        for event_type in valid_choices:
-            filter_obj = MQTTEventFilter.objects.create(
-                event_type=event_type,
-                enabled=True
-            )
-            self.assertEqual(filter_obj.event_type, event_type)
-    
-    def test_default_values(self):
-        """Test default values for event filter"""
-        filter_obj = MQTTEventFilter.objects.create(
-            event_type='tool_save'
-        )
-        
-        self.assertTrue(filter_obj.enabled)
-        self.assertIsNone(filter_obj.topic_override)
-        self.assertTrue(filter_obj.include_payload)

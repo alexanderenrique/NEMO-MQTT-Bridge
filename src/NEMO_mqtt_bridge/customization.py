@@ -6,17 +6,7 @@ import logging
 
 from NEMO.decorators import customization
 from NEMO.views.customization import CustomizationBase
-from .models import MQTTConfiguration, MQTTEventFilter, MQTTEventQueue, MQTTMessageLog
-
-# Event types shown as checkboxes on the MQTT customization page.
-# We keep the underlying event keys separate, but the UI groups some of them.
-MQTT_EVENT_CHECKBOX_KEYS = [
-    "usage_event_save",      # Enable/Disable (tool usage)
-    "tool_operational",      # Operational (grouped with tool_non_operational)
-    "tool_non_operational",  # Non-operational (grouped)
-    "task_created",          # Task created (grouped with task_resolved)
-    "task_resolved",         # Task resolved / updated (grouped)
-]
+from .models import MQTTConfiguration, MQTTEventQueue, MQTTMessageLog
 
 logger = logging.getLogger(__name__)
 
@@ -141,24 +131,10 @@ class MQTTCustomization(CustomizationBase):
         except Exception:
             pass
 
-        # Build dict of event_type -> enabled for checkbox event types (default True if no row)
-        try:
-            filters = {
-                key: MQTTEventFilter.objects.filter(event_type=key).first()
-                for key in MQTT_EVENT_CHECKBOX_KEYS
-            }
-            mqtt_event_filters = {
-                key: filt.enabled if filt else True
-                for key, filt in filters.items()
-            }
-        except Exception:
-            mqtt_event_filters = {key: True for key in MQTT_EVENT_CHECKBOX_KEYS}
-
         context_dict.update(
             {
                 "config": config,
                 "recent_messages": recent_messages,
-                "mqtt_event_filters": mqtt_event_filters,
                 "bridge_status": bridge_status,
                 "bridge_last_heartbeat_iso": bridge_last_heartbeat_iso,
                 "pending_queue_count": pending_queue_count,
@@ -230,36 +206,6 @@ class MQTTCustomization(CustomizationBase):
         config.log_level = request.POST.get("mqtt_log_level", config.log_level)
 
         config.save()
-
-        # Save event-type checkboxes (create or update MQTTEventFilter rows)
-        try:
-            # Enable/Disable (usage events) - single checkbox controls usage_event_save
-            usage_enabled = request.POST.get("mqtt_event_usage_event_save") == "enabled"
-            MQTTEventFilter.objects.update_or_create(
-                event_type="usage_event_save",
-                defaults={"enabled": usage_enabled},
-            )
-
-            # Operational / Non-operational - single checkbox controls both
-            op_group_enabled = (
-                request.POST.get("mqtt_event_operational_group") == "enabled"
-            )
-            for key in ("tool_operational", "tool_non_operational"):
-                MQTTEventFilter.objects.update_or_create(
-                    event_type=key,
-                    defaults={"enabled": op_group_enabled},
-                )
-
-            # Task created / Task resolved - single checkbox controls both
-            task_group_enabled = request.POST.get("mqtt_event_task_group") == "enabled"
-            for key in ("task_created", "task_resolved"):
-                MQTTEventFilter.objects.update_or_create(
-                    event_type=key,
-                    defaults={"enabled": task_group_enabled},
-                )
-        except Exception:
-            # Table may not exist yet; ignore failures here
-            pass
 
         messages.success(request, "MQTT configuration saved successfully!")
 

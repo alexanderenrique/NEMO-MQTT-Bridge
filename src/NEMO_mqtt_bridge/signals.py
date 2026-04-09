@@ -12,16 +12,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
-from .models import MQTTConfiguration, MQTTEventFilter
-
-
-def _event_filter_enabled(event_type: str) -> bool:
-    """Return True if this event type should be published (default True if no filter row)."""
-    try:
-        filt = MQTTEventFilter.objects.get(event_type=event_type)
-        return filt.enabled
-    except (MQTTEventFilter.DoesNotExist, Exception):
-        return True
+from .models import MQTTConfiguration
 
 
 # Check if NEMO is available
@@ -213,8 +204,6 @@ if NEMO_AVAILABLE:
         if not signal_handler.db_publisher:
             logger.warning("DB publisher not available (usage_event_saved, signal_id=%s)", signal_id)
             return
-        if not _event_filter_enabled("usage_event_save"):
-            return
 
         # End time set = tool disabled (usage ended); no end = tool enabled (usage started)
         if instance.end is not None:
@@ -280,8 +269,6 @@ if NEMO_AVAILABLE:
             if not signal_handler.db_publisher:
                 logger.warning("DB publisher not available (tool_operational)")
                 return
-            if not _event_filter_enabled("tool_operational"):
-                return
 
             data = {
                 "event": "tool_operational",
@@ -316,14 +303,6 @@ if NEMO_AVAILABLE:
         # Only consider tasks linked to a tool
         if not instance.tool_id:
             return
-
-        # Check filter: task_created for new tasks, task_resolved for updates
-        if created:
-            if not _event_filter_enabled("task_created"):
-                return
-        else:
-            if not _event_filter_enabled("task_resolved"):
-                return
 
         # Determine event type:
         # - If the task forces shutdown or is a safety hazard, keep "task_shutdown"
@@ -369,8 +348,6 @@ if NEMO_AVAILABLE:
             """
             if not signal_handler.db_publisher:
                 logger.warning("DB publisher not available (tool_non_operational)")
-                return
-            if not _event_filter_enabled("tool_non_operational"):
                 return
 
             data = {

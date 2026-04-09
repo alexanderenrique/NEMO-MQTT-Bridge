@@ -51,7 +51,7 @@ def test_mqtt_config_reload_needed_tuple_inequality():
     assert not mqtt_config_reload_needed((1, "a"), (1, "a"))
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_post_delete_mqtt_configuration_notifies_bridge():
     cfg = MQTTConfiguration.objects.create(
         name="to_delete",

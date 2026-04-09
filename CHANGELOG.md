@@ -2,10 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-04-09
+
+### Breaking
+
+- **Removed `MQTTEventFilter` and per–event-type toggles**: All supported NEMO MQTT event streams are **always** published when MQTT is enabled (usage enable/disable, operational/non-operational, tasks, tool/area/reservation/area access, etc.). The customization page no longer shows event checkboxes. Migration **`0005_remove_mqtteventfilter`** drops table `nemo_mqtt_mqtteventfilter`. Removed **`is_event_enabled`** and **`get_event_topic_override`** from [`utils.py`](src/NEMO_mqtt_bridge/utils.py).
+
+### Documentation
+
+- **Stakeholders & NOTIFY**: README and `monitoring/README.md` describe **`nemo_mqtt_reload`** (bridge reapplies `MQTTConfiguration` from the DB) vs **`nemo_mqtt_events`** (new queue row to publish), and note **`mqtt_active_config`** cache behavior with multiple Django workers.
+
 ## [2.2.4] - 2026-04-09
 
 - **UI: bridge status responsiveness**: MQTT customization / monitor UI reflects bridge connectivity changes promptly (including config-save triggered reconnect flows).
 - **Instant connection attempt on config change**: When MQTT configuration is saved and the bridge is currently waiting in reconnect backoff, the backoff wait is interrupted and the bridge makes an immediate reconnect attempt once, then continues normal exponential backoff if it still cannot connect.
+- **MQTT config always read from DB on bridge (re)connect**: `get_mqtt_config(force_refresh=True)` is used when the bridge starts MQTT and on every connection attempt (including `ConnectionManager` retries), so reconnect paths no longer reuse a stale `mqtt_active_config` cache entry from the bridge process.
+- **Bridge reload notify on transaction commit**: `MQTTConfiguration` `post_save` / `post_delete` now schedule `notify_bridge_reload_config()` with `transaction.on_commit()`, so the bridge is not notified until the configuration row is actually committed.
+- **Diagnostics**: Safe **INFO** line when the bridge applies broker settings (`Applying MQTT broker settings: …` with host, port, username, `auth=yes|no`, `config_id`, `updated_at`). Verbose **DEBUG** tracing for `get_mqtt_config` (cache hit vs database, non-secret snapshot), PostgreSQL `NOTIFY` payloads, fingerprint-based reload, `_reload_mqtt_config_and_reconnect`, and `connect_mqtt` (`client_id`, `keepalive`). Enable loggers such as `NEMO_mqtt_bridge`, `NEMO_mqtt_bridge.utils`, `NEMO_mqtt_bridge.postgres_mqtt_bridge`, `NEMO_mqtt_bridge.bridge.mqtt_connection`, `NEMO_mqtt_bridge.models`, and `NEMO_mqtt_bridge.db_publisher` at DEBUG to trace config reloads.
 
 ## [2.2.3] - 2026-04-08
 
@@ -72,7 +85,7 @@ All notable changes to this project will be documented in this file.
   - Listens to NEMO’s custom `tool_enabled` and `tool_disabled` signals (emitted when `tool.operational` changes, e.g. when a task forces a shutdown or problems are cleared).
   - **Topics**: `nemo/tools/{id}/operational` when a tool becomes operational again; `nemo/tools/{id}/non-operational` when a tool is marked down.
   - Payload includes `event`, `tool_id`, `tool_name`, `operational` (boolean), and `timestamp` (ISO). Displays can use these topics to show “tool down” / “tool OK” indicators in real time, independent of who is using the tool.
-  - Optional event filter types `tool_operational` and `tool_non_operational` in MQTT customization; documentation in README and `monitoring/README.md`.
+  - ~~Optional event filter types `tool_operational` and `tool_non_operational` in MQTT customization~~ **Removed in 2.3.0** (all event streams always on).
 
 ## [2.1.2] - 2026-03-16
 

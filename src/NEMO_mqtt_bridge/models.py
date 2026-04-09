@@ -2,6 +2,8 @@
 Models for MQTT plugin configuration and message history.
 """
 
+import logging
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
@@ -9,6 +11,8 @@ from django.core.cache import cache
 from django.db.models.signals import post_save, post_delete
 from django.db.models import Q
 from django.dispatch import receiver
+
+logger = logging.getLogger(__name__)
 
 
 class MQTTConfiguration(models.Model):
@@ -212,68 +216,38 @@ class MQTTBridgeStatus(models.Model):
         return f"{self.status} at {self.updated_at}"
 
 
-class MQTTEventFilter(models.Model):
-    """Filter configuration for which events to publish via MQTT"""
-
-    EVENT_TYPES = [
-        ("tool_save", "Tool Save"),
-        ("tool_delete", "Tool Delete"),
-        ("area_save", "Area Save"),
-        ("area_delete", "Area Delete"),
-        ("reservation_save", "Reservation Save"),
-        ("reservation_delete", "Reservation Delete"),
-        ("usage_event_save", "Usage Event Save"),
-        ("area_access_save", "Area Access Save"),
-        ("tool_operational", "Tool Operational"),
-        ("tool_non_operational", "Tool Non-Operational"),
-        ("task_shutdown", "Task Shutdown (per-tool tasks topic)"),
-        ("task_created", "Task Created"),
-        ("task_resolved", "Task Resolved"),
-    ]
-
-    event_type = models.CharField(
-        max_length=50, choices=EVENT_TYPES, help_text="Type of event to filter"
-    )
-    enabled = models.BooleanField(
-        default=True, help_text="Whether this event type is enabled"
-    )
-    topic_override = models.CharField(
-        max_length=500,
-        blank=True,
-        null=True,
-        help_text="Custom topic for this event type",
-    )
-    include_payload = models.BooleanField(
-        default=True, help_text="Whether to include full payload data"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "nemo_mqtt_mqtteventfilter"
-        verbose_name = "MQTT Event Filter"
-        verbose_name_plural = "MQTT Event Filters"
-        unique_together = ["event_type"]
-
-    def __str__(self):
-        return f"{self.get_event_type_display()} ({'Enabled' if self.enabled else 'Disabled'})"
-
-
 # Signal handlers to clear cache when MQTT configuration changes
 @receiver(post_save, sender=MQTTConfiguration)
 def clear_mqtt_config_cache_on_save(sender, instance, **kwargs):
     """Clear the MQTT configuration cache when a configuration is saved and notify bridge to reload."""
+    from django.db import transaction
+
     cache.delete("mqtt_active_config")
     from .db_publisher import notify_bridge_reload_config
 
-    notify_bridge_reload_config()
+    u = instance.updated_at.isoformat() if instance.updated_at else None
+    logger.debug(
+        "MQTTConfiguration post_save pk=%s enabled=%s updated_at=%s cleared "
+        "mqtt_active_config scheduling bridge notify on_commit",
+        instance.pk,
+        instance.enabled,
+        u,
+    )
+    transaction.on_commit(notify_bridge_reload_config)
 
 
 @receiver(post_delete, sender=MQTTConfiguration)
 def clear_mqtt_config_cache_on_delete(sender, instance, **kwargs):
     """Clear the MQTT configuration cache when a configuration is deleted."""
+    from django.db import transaction
+
     cache.delete("mqtt_active_config")
     from .db_publisher import notify_bridge_reload_config
 
-    notify_bridge_reload_config()
+    logger.debug(
+        "MQTTConfiguration post_delete pk=%s had_enabled=%s cleared "
+        "mqtt_active_config scheduling bridge notify on_commit",
+        instance.pk,
+        instance.enabled,
+    )
+    transaction.on_commit(notify_bridge_reload_config)

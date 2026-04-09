@@ -167,11 +167,23 @@ def notify_bridge_reload_config() -> bool:
     Call this after saving MQTT configuration.
     """
     if not _is_postgresql():
+        logger.debug(
+            "notify_bridge_reload_config skipped: not PostgreSQL (channel=%s)",
+            NOTIFY_CHANNEL_RELOAD,
+        )
         return False
     try:
         db_publisher._pg_notify(NOTIFY_CHANNEL_RELOAD, "")
-        logger.debug("Notified bridge to reload config")
+        logger.info(
+            "Notified MQTT bridge to reload config (pg_notify channel=%s)",
+            NOTIFY_CHANNEL_RELOAD,
+        )
         return True
     except Exception as e:
         logger.warning("Failed to notify bridge to reload config: %s", e)
+        logger.debug(
+            "notify_bridge_reload_config failed channel=%s error_type=%s",
+            NOTIFY_CHANNEL_RELOAD,
+            type(e).__name__,
+        )
         return False

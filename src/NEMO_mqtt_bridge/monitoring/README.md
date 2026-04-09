@@ -40,6 +40,14 @@ The plugin's web dashboard at **`/mqtt/mqtt_monitor/`** shows MQTT configuration
 
 Saving or deleting MQTT configuration in Django triggers `pg_notify` on `nemo_mqtt_reload`, and the bridge also **polls** the enabled configuration row’s `updated_at` on the same schedule as the event queue (default 2s). Broker host, auth, and related settings therefore apply even if the reload notify is lost (for example with some pooler setups). After a successful reconnect, pending queue rows are published immediately.
 
+### Stakeholders and NOTIFY (summary)
+
+- **`nemo_mqtt_reload`** — `MQTTConfiguration` changed (committed). Bridge reloads broker settings from the database (plus fingerprint fallback).
+- **`nemo_mqtt_events`** — New `MQTTEventQueue` row. Bridge publishes that payload to MQTT.
+- **All implemented event types** are always published when MQTT is on; there is no separate “event filter” layer in the bridge.
+
+**Django workers:** `mqtt_active_config` is cached; with LocMem per worker, use a shared cache if every Gunicorn/Uvicorn worker must immediately see broker edits. The bridge process reloads from PostgreSQL on its reload path.
+
 ## In-process bridge vs separate process
 
 **Default (2.2.0+):** the bridge **does not** start from Django (`AppConfig.ready`). Run **`python -m NEMO_mqtt_bridge.postgres_mqtt_bridge`** as its own process (systemd, Compose service, etc.). Django still enqueues events and sends **`pg_notify`**; the standalone bridge **LISTEN**s and publishes to MQTT.
