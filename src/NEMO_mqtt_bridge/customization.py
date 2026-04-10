@@ -6,7 +6,8 @@ import logging
 
 from NEMO.decorators import customization
 from NEMO.views.customization import CustomizationBase
-from .models import MQTTConfiguration, MQTTEventQueue, MQTTMessageLog
+from .models import MQTTConfiguration
+from .monitor_context import mqtt_config_context
 
 logger = logging.getLogger(__name__)
 
@@ -61,90 +62,8 @@ class MQTTCustomization(CustomizationBase):
 
     def context(self) -> dict:
         """Return context data for the MQTT customization template."""
-        # Get the base context from parent class
         context_dict = super().context()
-
-        try:
-            from . import __version__ as plugin_version
-        except Exception:
-            plugin_version = None
-
-        # Get the single MQTT configuration (create one if none exists)
-        import os
-        import socket
-
-        # Create unique client ID using hostname and process ID
-        unique_client_id = f"nemo_{socket.gethostname()}_{os.getpid()}"
-
-        config, created = MQTTConfiguration.objects.get_or_create(
-            defaults={
-                "name": "Default MQTT Configuration",
-                "enabled": False,
-                "broker_host": "localhost",
-                "broker_port": 1883,
-                "client_id": unique_client_id,
-                "topic_prefix": "nemo/",
-                "qos_level": 1,
-                "retain_messages": False,
-                "clean_session": True,
-                "auto_reconnect": True,
-                "reconnect_delay": 5,
-                "max_reconnect_attempts": 10,
-                "log_messages": True,
-                "log_level": "INFO",
-            }
-        )
-
-        recent_messages = MQTTMessageLog.objects.order_by("-sent_at")[:5]
-        pending_queue_count = MQTTEventQueue.objects.filter(processed=False).count()
-        pending_queue_oldest = (
-            MQTTEventQueue.objects.filter(processed=False)
-            .order_by("created_at")
-            .values_list("created_at", flat=True)
-            .first()
-        )
-        pending_queue_newest = (
-            MQTTEventQueue.objects.filter(processed=False)
-            .order_by("-created_at")
-            .values_list("created_at", flat=True)
-            .first()
-        )
-        recent_queue_events = (
-            MQTTEventQueue.objects.order_by("-id").values(
-                "id", "topic", "qos", "retain", "processed", "created_at"
-            )[:5]
-        )
-        try:
-            from .db_publisher import db_publisher
-
-            bridge_status = db_publisher.get_bridge_status()
-        except Exception:
-            bridge_status = None
-
-        bridge_last_heartbeat_iso = None
-        try:
-            from .models import MQTTBridgeStatus
-
-            hb_row = MQTTBridgeStatus.objects.filter(key="default").first()
-            if hb_row and hb_row.last_heartbeat:
-                bridge_last_heartbeat_iso = hb_row.last_heartbeat.isoformat()
-        except Exception:
-            pass
-
-        context_dict.update(
-            {
-                "config": config,
-                "recent_messages": recent_messages,
-                "bridge_status": bridge_status,
-                "bridge_last_heartbeat_iso": bridge_last_heartbeat_iso,
-                "pending_queue_count": pending_queue_count,
-                "pending_queue_oldest": pending_queue_oldest,
-                "pending_queue_newest": pending_queue_newest,
-                "recent_queue_events": list(recent_queue_events),
-                "plugin_version": plugin_version,
-            }
-        )
-
+        context_dict.update(mqtt_config_context())
         return context_dict
 
     def validate(self, request) -> list:

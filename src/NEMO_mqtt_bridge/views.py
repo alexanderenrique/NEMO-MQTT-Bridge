@@ -9,25 +9,18 @@ from django.http import JsonResponse
 
 @login_required
 def mqtt_monitor(request):
-    """Web-based monitor: stream of messages NEMO publishes to queue (pre-MQTT)."""
-    mqtt_config = None
-    broker_connected = None
+    """Web-based MQTT monitor: bridge status, queue samples, and message history."""
+    ctx: dict = {"title": "NEMO MQTT Monitor", "config": None}
     try:
-        from .utils import get_mqtt_config
-        from .db_publisher import db_publisher
+        from .monitor_context import mqtt_dashboard_context
 
-        mqtt_config = get_mqtt_config()
-        broker_connected = db_publisher.get_bridge_status()
+        ctx.update(mqtt_dashboard_context())
     except Exception:
         pass
     response = render(
         request,
         "nemo_mqtt/monitor.html",
-        {
-            "title": "NEMO MQTT Monitor",
-            "mqtt_config": mqtt_config,
-            "broker_connected": broker_connected,
-        },
+        ctx,
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"

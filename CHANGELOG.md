@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.1] - 2026-04-09
+
+### Changed
+
+- **MQTT monitor vs customization**: Operational **status**, **recent queue rows**, **recent MQTT message log**, and **debug diagnostics** (checkbox, copy-friendly snapshot, polling against `/mqtt_bridge_status/`) now live on the **MQTT monitor** page (`/mqtt/mqtt_monitor/` or `/mqtt_monitor/` depending on URL mount). The MQTT **customization** page is **configuration only** (form + HMAC toggle script). Shared context is built in [`monitor_context.py`](src/NEMO_mqtt_bridge/monitor_context.py) so the monitor view does not import the NEMO customization module.
+- **Bridge diagnostics visibility**: Fields such as **last bridge config reload** and **applied config (bridge process)** are stored in the database on **`MQTTBridgeStatus.bridge_diagnostics`** (migration **`0006_mqttbridgestatus_bridge_diagnostics`**) in addition to the Django cache, so the `/mqtt_bridge_status/` JSON API and monitor UI show them when the bridge runs in a **separate process** from the web workers.
+- **Monitor page presentation**: Dedicated wrapper and title styling on the monitor template; if dashboard context cannot be loaded, users see an explicit **Unable to load MQTT dashboard** alert instead of partial markup. The diagnostics snapshot block labels the bridge-supplied fields as **database**-backed (not process-local cache).
+
 ## [2.3.0] - 2026-04-09
 
 ### Breaking
@@ -67,7 +75,7 @@ All notable changes to this project will be documented in this file.
 
 - **Immediate MQTT reconnect after config save**: `MQTTConfiguration` changes now trigger the bridge reload notification on DB transaction commit (`transaction.on_commit()`), so the bridge begins reconnecting as soon as the configuration is actually saved (instead of waiting for a longer surrounding transaction to finish).
 - **Faster bridge status updates in the UI**: Added a `/mqtt_bridge_status/` JSON endpoint and 2-second polling on the monitor page and MQTT customization page so “Connected / Disconnected” reflects the real bridge state quickly without manual refresh.
-- **Customization page debug toggle + diagnostics snapshot**: The MQTT customization page now includes a “Show debug details” checkbox that reveals recent queue rows and message history on demand, plus a copy/paste friendly diagnostics snapshot (bridge status/updated time + safe MQTT config + queue metadata + plugin version) for troubleshooting in environments without backend log/SSH access.
+- **Customization page debug toggle + diagnostics snapshot**: The MQTT customization page now includes a “Show debug details” checkbox that reveals recent queue rows and message history on demand, plus a copy/paste friendly diagnostics snapshot (bridge status/updated time + safe MQTT config + queue metadata + plugin version) for troubleshooting in environments without backend log/SSH access. *(Superseded in **2.3.1**: the same behavior was moved to the **MQTT monitor** page; customization is configuration-only.)*
 ## [2.1.4] - 2026-04-07
 
 - **Reliable MQTT config reload**: The PostgreSQL–MQTT bridge reapplies broker settings when `MQTTConfiguration` changes, not only via `LISTEN nemo_mqtt_reload`. On the same interval as the event queue poll (default 2s), it compares the enabled row’s `(id, updated_at)` to the last successful connection; if different, it reloads from the database, reconnects (or disconnects if disabled), and drains `MQTTEventQueue` once. This matches the queue’s NOTIFY+polling pattern and fixes missed reload notifications (e.g. connection poolers). `MQTTConfiguration` **delete** now also sends `nemo_mqtt_reload` (previously only the Django cache was cleared).

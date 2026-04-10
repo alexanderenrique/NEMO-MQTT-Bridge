@@ -205,6 +205,11 @@ class MQTTBridgeStatus(models.Model):
         blank=True,
         help_text="Set periodically by the bridge while the consumption loop runs; used for optional supervisor health checks",
     )
+    bridge_diagnostics = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Last reload reason, applied config fingerprint, etc. (written by bridge; no secrets)",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

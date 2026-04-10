@@ -34,7 +34,7 @@ The `test` option runs `manage.py test_mqtt_api` if that management command exis
 
 ## Web monitor
 
-The plugin's web dashboard at **`/mqtt/mqtt_monitor/`** shows MQTT configuration and bridge status. (The live event stream/feed has been disabled.)
+The plugin's web dashboard at **`/mqtt/mqtt_monitor/`** shows bridge status, queue samples, optional debug tables, and polls **`/mqtt_bridge_status/`** for live heartbeat and diagnostics. MQTT broker settings are edited on the MQTT **customization** page. (The live event stream/feed has been disabled.)
 
 ## Bridge configuration reload
 

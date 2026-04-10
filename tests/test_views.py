@@ -36,3 +36,4 @@ class MQTTMonitorViewTest(TestCase):
         response = self.client.get("/mqtt/mqtt_monitor/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"NEMO MQTT Monitor", response.content)
+        self.assertIn(b"Status & Recent Messages", response.content)

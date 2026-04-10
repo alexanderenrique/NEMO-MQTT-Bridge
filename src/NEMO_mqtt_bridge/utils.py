@@ -55,6 +55,21 @@ def mqtt_config_fingerprint_serial(
 
 
 def read_mqtt_bridge_diagnostics() -> Dict[str, Any]:
+    """
+    Prefer DB (singleton MQTTBridgeStatus row) so the web process sees updates
+    from a separate bridge process; fall back to cache for older deployments/tests.
+    """
+    try:
+        from .models import MQTTBridgeStatus
+
+        row = MQTTBridgeStatus.objects.filter(key="default").first()
+        if row is not None:
+            raw = getattr(row, "bridge_diagnostics", None)
+            if isinstance(raw, dict):
+                return dict(raw)
+    except Exception:
+        logger.debug("read_mqtt_bridge_diagnostics: DB read failed", exc_info=True)
+
     from django.core.cache import cache
 
     raw = cache.get(MQTT_BRIDGE_DIAGNOSTICS_CACHE_KEY)
@@ -73,6 +88,16 @@ def update_mqtt_bridge_diagnostics(partial: Dict[str, Any]) -> None:
         data,
         MQTT_BRIDGE_DIAGNOSTICS_CACHE_TIMEOUT,
     )
+    try:
+        from .models import MQTTBridgeStatus
+
+        obj, _ = MQTTBridgeStatus.objects.get_or_create(
+            key="default",
+            defaults={"status": "disconnected"},
+        )
+        MQTTBridgeStatus.objects.filter(pk=obj.pk).update(bridge_diagnostics=data)
+    except Exception:
+        logger.debug("update_mqtt_bridge_diagnostics: DB write failed", exc_info=True)
 
 
 def note_mqtt_bridge_diagnostics_error(message: str) -> None:
