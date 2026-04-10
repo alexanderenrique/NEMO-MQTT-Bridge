@@ -4,7 +4,7 @@ Tests for NEMO MQTT Plugin views (mqtt_monitor).
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
 
-from NEMO_mqtt_bridge.models import MQTTConfiguration
+from NEMO_mqtt_bridge.models import MQTTBridgeStatus, MQTTConfiguration
 
 
 class MQTTMonitorViewTest(TestCase):
@@ -37,3 +37,16 @@ class MQTTMonitorViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"NEMO MQTT Monitor", response.content)
         self.assertIn(b"Status & Recent Messages", response.content)
+
+    def test_mqtt_monitor_embeds_initial_bridge_status_json(self):
+        """SSR json_script matches DB row so fields work before the first poll."""
+        self.client.login(username="testuser", password="testpass123")
+        MQTTBridgeStatus.objects.update_or_create(
+            key="default",
+            defaults={"status": "connected"},
+        )
+        response = self.client.get("/mqtt/mqtt_monitor/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="mqtt-bridge-initial-status"', response.content)
+        self.assertIn(b'"status": "connected"', response.content)
+        self.assertIn(b'"updated_at":', response.content)

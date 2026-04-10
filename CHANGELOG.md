@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.2] - 2026-04-09
+
+### Changed
+
+- **MQTT monitor SSR and live polling**: The monitor page embeds the same snapshot as **`/mqtt_bridge_status/`** via `json_script` (built from **`mqtt_bridge_status_payload()`** in [`utils.py`](src/NEMO_mqtt_bridge/utils.py)), so **broker connection (DB row) updated**, **heartbeat**, **reload / applied config / last error**, and the debug snapshot are filled **on first paint** before the first poll. The JSON view reuses that helper so the API and page stay aligned.
+- **Status API row UX**: While waiting for the first successful poll, the row shows **Live (from page load; polling…)** instead of staying on **Loading…** indefinitely. Polling uses a **12s timeout** (`AbortController`) and rejects **non-`application/json`** responses with a clear **Non-JSON response (auth or error page?)** message for SSO/HTML error bodies.
+- **Cold-start bridge diagnostics**: After a successful initial MQTT connect in **`PostgresMQTTBridge.start()`**, the bridge calls **`_publish_reload_diagnostics("startup", …)`** so **last bridge config reload** and **applied config** are populated without waiting for a **`notify`** or **`config_poll`** reload.
+
 ## [2.3.1] - 2026-04-09
 
 ### Changed

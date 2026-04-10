@@ -310,6 +310,12 @@ class PostgresMQTTBridge:
                 self._disconnect_mqtt_client()
 
             self._mqtt_config_fingerprint = read_mqtt_config_fingerprint()
+            if (
+                has_enabled
+                and self.mqtt_client is not None
+                and getattr(self.mqtt_client, "is_connected", lambda: False)()
+            ):
+                self._publish_reload_diagnostics("startup", last_error="")
 
             self.running = True
             self.thread = threading.Thread(target=self._run, daemon=True)

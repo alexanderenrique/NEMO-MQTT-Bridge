@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 
 from NEMO_mqtt_bridge.models import MQTTBridgeStatus
 from NEMO_mqtt_bridge.utils import (
+    mqtt_bridge_status_payload,
     read_mqtt_bridge_diagnostics,
     update_mqtt_bridge_diagnostics,
 )
@@ -44,3 +45,17 @@ class MqttBridgeDiagnosticsPersistenceTest(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["diagnostics"]["last_reload_reason"], "notify")
+
+    def test_mqtt_bridge_status_payload_matches_json_view(self):
+        user = User.objects.create_user(
+            username="payloaduser",
+            email="p@example.com",
+            password="x",
+        )
+        update_mqtt_bridge_diagnostics({"last_reload_reason": "notify"})
+        client = Client()
+        client.login(username="payloaduser", password="x")
+        from_api = client.get("/mqtt/mqtt_bridge_status/").json()
+        from_util = mqtt_bridge_status_payload()
+        self.assertEqual(from_api.keys(), from_util.keys())
+        self.assertEqual(from_api["diagnostics"], from_util["diagnostics"])

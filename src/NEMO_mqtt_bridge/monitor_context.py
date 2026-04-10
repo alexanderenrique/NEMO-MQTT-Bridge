@@ -64,20 +64,20 @@ def mqtt_dashboard_context() -> dict:
             "id", "topic", "qos", "retain", "processed", "created_at"
         )[:5]
     )
-    try:
-        from .db_publisher import db_publisher
-
-        bridge_status = db_publisher.get_bridge_status()
-    except Exception:
-        bridge_status = None
-
+    bridge_status = None
     bridge_last_heartbeat_iso = None
+    bridge_status_updated_at_iso = None
+    bridge_status_initial = {}
     try:
-        from .models import MQTTBridgeStatus
+        from .utils import mqtt_bridge_status_payload
 
-        hb_row = MQTTBridgeStatus.objects.filter(key="default").first()
-        if hb_row and hb_row.last_heartbeat:
-            bridge_last_heartbeat_iso = hb_row.last_heartbeat.isoformat()
+        payload = mqtt_bridge_status_payload()
+        bridge_status_initial = payload
+        st = payload.get("status")
+        if st in ("connected", "disconnected"):
+            bridge_status = st
+        bridge_last_heartbeat_iso = payload.get("last_heartbeat")
+        bridge_status_updated_at_iso = payload.get("updated_at")
     except Exception:
         pass
 
@@ -86,6 +86,8 @@ def mqtt_dashboard_context() -> dict:
             "recent_messages": recent_messages,
             "bridge_status": bridge_status,
             "bridge_last_heartbeat_iso": bridge_last_heartbeat_iso,
+            "bridge_status_updated_at_iso": bridge_status_updated_at_iso,
+            "bridge_status_initial": bridge_status_initial,
             "pending_queue_count": pending_queue_count,
             "pending_queue_oldest": pending_queue_oldest,
             "pending_queue_newest": pending_queue_newest,

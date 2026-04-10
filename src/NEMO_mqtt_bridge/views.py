@@ -31,32 +31,6 @@ def mqtt_monitor(request):
 @login_required
 def mqtt_bridge_status(request):
     """Return current bridge status from DB as JSON."""
-    status = None
-    updated_at = None
-    last_heartbeat = None
-    diagnostics = {}
-    try:
-        from .utils import read_mqtt_bridge_diagnostics
+    from .utils import mqtt_bridge_status_payload
 
-        diagnostics = read_mqtt_bridge_diagnostics()
-    except Exception:
-        pass
-    try:
-        from .models import MQTTBridgeStatus
-
-        row = MQTTBridgeStatus.objects.filter(key="default").first()
-        if row:
-            status = row.status
-            updated_at = row.updated_at.isoformat() if row.updated_at else None
-            if row.last_heartbeat:
-                last_heartbeat = row.last_heartbeat.isoformat()
-    except Exception:
-        pass
-    return JsonResponse(
-        {
-            "status": status,
-            "updated_at": updated_at,
-            "last_heartbeat": last_heartbeat,
-            "diagnostics": diagnostics,
-        }
-    )
+    return JsonResponse(mqtt_bridge_status_payload())

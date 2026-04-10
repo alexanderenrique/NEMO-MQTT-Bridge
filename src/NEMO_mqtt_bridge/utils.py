@@ -76,6 +76,38 @@ def read_mqtt_bridge_diagnostics() -> Dict[str, Any]:
     return dict(raw) if isinstance(raw, dict) else {}
 
 
+def mqtt_bridge_status_payload() -> Dict[str, Any]:
+    """
+    Same fields as the mqtt_bridge_status JSON view: bridge row + diagnostics.
+    Used by the view and by the monitor page for SSR and polling consistency.
+    """
+    status = None
+    updated_at = None
+    last_heartbeat = None
+    diagnostics: Dict[str, Any] = {}
+    try:
+        diagnostics = read_mqtt_bridge_diagnostics()
+    except Exception:
+        pass
+    try:
+        from .models import MQTTBridgeStatus
+
+        row = MQTTBridgeStatus.objects.filter(key="default").first()
+        if row:
+            status = row.status
+            updated_at = row.updated_at.isoformat() if row.updated_at else None
+            if row.last_heartbeat:
+                last_heartbeat = row.last_heartbeat.isoformat()
+    except Exception:
+        pass
+    return {
+        "status": status,
+        "updated_at": updated_at,
+        "last_heartbeat": last_heartbeat,
+        "diagnostics": diagnostics,
+    }
+
+
 def update_mqtt_bridge_diagnostics(partial: Dict[str, Any]) -> None:
     from django.core.cache import cache
     from django.utils import timezone
